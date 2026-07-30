@@ -26,7 +26,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include "bsp_knob_encoder.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -99,14 +100,22 @@ int main(void)
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
+    BSP_KnobEncoder_Init(&htim2);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-      HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
+      int32_t raw_count = BSP_KnobEncoder_GetRawCount();
+      float angle = BSP_KnobEncoder_GetAngle();
+
+      printf("Raw Count: %ld\r\n", raw_count);
+      printf("Angle: %f\r\n", angle);
+
       HAL_Delay(1000);
+
 
 
     /* USER CODE END WHILE */
@@ -157,6 +166,12 @@ void SystemClock_Config(void)
 
 /* USER CODE BEGIN 4 */
 
+// Printf重定向
+int _write(int file, char *ptr, int len)
+{
+    HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY);
+    return len;
+}
 /* USER CODE END 4 */
 
 /**
