@@ -1,0 +1,49 @@
+# Build output
+build/
+
+# STM32CubeIDE settings (user-specific)
+.settings/
+
+# STM32CubeMX project metadata (auto-generated, user-specific)
+.mxproject
+
+# Clangd cache
+.clangd
+
+# VS Code (user-specific editor settings)
+.vscode/
+
+# Object files
+*.o
+*.obj
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+
+# Precompiled headers
+*.gch
+*.pch
+
+# Debug
+*.d
+
+# Compiled Static/Dynamic libraries
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+
+# Editor backup/temp files
+*~
+*.swp
+*.swo
+*.bak
+*.orig
+.DS_Store
+Thumbs.db
+
+# JetBrains IDE (CLion)
+.idea/
