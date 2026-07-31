@@ -28,6 +28,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include "bsp_knob_encoder.h"
+#include "bsp_knob_motor.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -101,6 +102,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
     BSP_KnobEncoder_Init(&htim2);
+    BSP_KnobMotor_Init(&htim4);
 
   /* USER CODE END 2 */
 
@@ -111,10 +113,17 @@ int main(void)
       int32_t raw_count = BSP_KnobEncoder_GetRawCount();
       float angle = BSP_KnobEncoder_GetAngle();
 
-      printf("Raw Count: %ld\r\n", raw_count);
-      printf("Angle: %f\r\n", angle);
+      if (angle > 360)
+          BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_REVERSE, 50);
+      else if (angle < 0)
+          BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_FORWARD, 50);
+      else
+          BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_WAIT, 50);
 
-      HAL_Delay(1000);
+      // printf("Raw Count: %ld\r\n", raw_count);
+      // printf("Angle: %f\r\n", angle);
+      //
+      // HAL_Delay(1000);
 
 
 

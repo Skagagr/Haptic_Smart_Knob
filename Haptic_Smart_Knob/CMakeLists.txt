@@ -53,6 +53,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 file(GLOB_RECURSE USER_SOURCES
         CONFIGURE_DEPENDS
         Drivers/BSP/Knob_Encoder/*.c
+        Drivers/BSP/Knob_Motor/*.c
 )
 
 # ============================================================
@@ -74,6 +75,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         # Add user defined include paths
         Core/Inc
         Drivers/BSP/Knob_Encoder
+        Drivers/BSP/Knob_Motor
 )
 
 # Add project symbols (macros)
