@@ -43,7 +43,7 @@ void BSP_KnobMotor_SetOutput(Knob_Motor_Dir_t dir, uint8_t duty_pct)
             HAL_GPIO_WritePin(KNOB_MOTOR_AIN1_PORT, KNOB_MOTOR_AIN1_PIN, GPIO_PIN_SET);
             HAL_GPIO_WritePin(KNOB_MOTOR_AIN2_PORT, KNOB_MOTOR_AIN2_PIN, GPIO_PIN_SET);
             break;
-        case KNOB_MOTOR_DIR_WAIT:
+        case KNOB_MOTOR_DIR_STOP:
         default:
             HAL_GPIO_WritePin(KNOB_MOTOR_AIN1_PORT, KNOB_MOTOR_AIN1_PIN, GPIO_PIN_RESET);
             HAL_GPIO_WritePin(KNOB_MOTOR_AIN2_PORT, KNOB_MOTOR_AIN2_PIN, GPIO_PIN_RESET);

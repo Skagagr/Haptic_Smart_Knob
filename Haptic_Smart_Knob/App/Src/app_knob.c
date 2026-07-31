@@ -29,7 +29,7 @@ void App_Knob_Test(void)
     else if (angle < 0)
         BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_FORWARD, 50);
     else
-        BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_WAIT, 50);
+        BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_STOP, 50);
 
     // printf("Forward 30%%\r\n");
     // BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_FORWARD, 30);

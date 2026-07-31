@@ -36,7 +36,7 @@ typedef enum
     KNOB_MOTOR_DIR_FORWARD = 0,     // AIN1=1，AIN2=0，前进
     KNOB_MOTOR_DIR_REVERSE,         // AIN1=0，AIN2=1，后退
     KNOB_MOTOR_DIR_BRAKE,           // AIN1=1，AIN2=1，刹车
-    KNOB_MOTOR_DIR_WAIT             // AIN1=0，AIN2=0，等待，不进行任何操作，使人手可以很轻松的转动
+    KNOB_MOTOR_DIR_STOP             // AIN1=0，AIN2=0，停止，不进行任何操作，使人手可以很轻松的转动
 } Knob_Motor_Dir_t;
 
 /**
