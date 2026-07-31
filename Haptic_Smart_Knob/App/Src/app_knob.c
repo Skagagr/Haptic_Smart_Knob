@@ -13,16 +13,20 @@
 #include "bsp_knob_motor.h"
 #include "tim.h"
 
+volatile int32_t raw_count = 0;
+volatile float angle = 0;
+
 void App_Knob_Init(void)
 {
     BSP_KnobEncoder_Init(&htim2);
     BSP_KnobMotor_Init(&htim4);
+    HAL_TIM_Base_Start_IT(&htim3);
 }
 
 void App_Knob_Test(void)
 {
-    int32_t raw_count = BSP_KnobEncoder_GetRawCount();
-    float angle = BSP_KnobEncoder_GetAngle();
+    raw_count = BSP_KnobEncoder_GetRawCount();
+    angle = BSP_KnobEncoder_GetAngle();
 
     if (angle > 360)
         BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_REVERSE, 50);
@@ -30,20 +34,18 @@ void App_Knob_Test(void)
         BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_FORWARD, 50);
     else
         BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_STOP, 50);
+}
 
-    // printf("Forward 30%%\r\n");
-    // BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_FORWARD, 30);
-    // HAL_Delay(2000);
-    //
-    // printf("Brake\r\n");
-    // BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_BRAKE, 0);
-    // HAL_Delay(1000);
-    //
-    // printf("Reverse 30%%\r\n");
-    // BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_REVERSE, 30);
-    // HAL_Delay(2000);
-    //
-    // printf("Brake\r\n");
-    // BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_BRAKE, 0);
-    // HAL_Delay(1000);
+void App_Knob_Debug(void)
+{
+    printf("Raw Count: %ld\r\n", raw_count);
+    printf("Angle: %f\r\n", angle);
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM3)
+    {
+        App_Knob_Test();
+    }
 }

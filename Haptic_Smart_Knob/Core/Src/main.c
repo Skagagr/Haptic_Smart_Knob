@@ -28,6 +28,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include "app_knob.h"
+#include "bsp_knob_encoder.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -107,7 +108,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    App_Knob_Test();
+    App_Knob_Debug();
+      HAL_Delay(1000);
 
 
     /* USER CODE END WHILE */

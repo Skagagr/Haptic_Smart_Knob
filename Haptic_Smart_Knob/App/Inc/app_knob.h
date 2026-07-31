@@ -20,5 +20,10 @@ void App_Knob_Init(void);
  */
 void App_Knob_Test(void);
 
+/**
+ * @brief 打印调试信息
+ */
+void App_Knob_Debug(void);
+
 
 #endif
