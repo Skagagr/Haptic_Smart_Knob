@@ -15,107 +15,79 @@
 #include "app_limit.h"
 #include "bsp_knob_encoder.h"
 #include "bsp_knob_motor.h"
+#include "bsp_knob_buzzer.h"
 #include "tim.h"
 
 /**
  * ============================== 可调参数说明 ==============================
  *
- * 只需修改本区块的 #define 即可调整手感，无需改动逻辑代码。
- * 所有角度阈值（死区、爬坡起点）按半间距比例自动缩放，改卡位数无需
- * 逐一手动调整其他值。
+ * 只需修改 KNOB_DEFAULT_NUM_DETENTS 一个宏。所有派生参数（力峰值、死区、
+ * 爬坡起点）在 Init 中自动根据半间距缩放，无需手动对照调整。
  *
  * --- 卡位 ---
  *
- * KNOB_DEFAULT_NUM_DETENTS   每圈卡位数 (2 ~ 90)
- *                            值越大卡位越密。设为 0 禁用卡位。
- *                            示例: 12 = 每30°一个, 24 = 每15°一个
+ * KNOB_DEFAULT_NUM_DETENTS   每圈卡位数 (2 ~ 90)，0 = 禁用卡位
  *
- * KNOB_DEAD_ZONE_RATIO       死区占半间距比例 (0.0 ~ 0.5)
- *                            死区内电机不输出，旋钮可自由停靠。
- *                            值越大卡位中心越"宽松"，越小越"紧"。
- *                            示例: 12 卡位时 0.13 → 死区 ±2.0°
+ * KNOB_REF_BUMP_MAX_PCT      爬坡阻力基准值 (对应 12 卡位/半间距 15°)
+ *                            实际值 = 基准 × (半间距/15°)，14% 地板
  *
- * KNOB_BUMP_START_RATIO      爬坡起点占半间距比例 (0.0 ~ 1.0)
- *                            旋钮到达此比例位置后开始感受到逆向阻力，
- *                            之前完全自由。值越大自由区越宽、爬坡越陡。
- *                            示例: 12 卡位时 0.70 → 前 10.5° 自由
+ * KNOB_REF_RETURN_FORCE_PCT  归中力基准值 (对应 12 卡位/半间距 15°)
+ *                            实际值 = 基准 × (半间距/15°)，12% 地板
  *
- * KNOB_BUMP_MAX_PCT          爬坡阻力最大值，0 ~ 100 (% 占空比)
- *                            越接近中点阻力越大，在中点达到该峰值。
- *                            值过大则拧动费力，过小则齿感不明显。
+ * KNOB_VEL_THRESHOLD         转动判定阈值 (°/ms)，须 > 编码器噪声 0.13
+ * KNOB_STILL_THRESHOLD       静止判定阈值 (°/ms)，须 > 编码器噪声
+ * KNOB_STILL_COUNT_NEEDED    松手判定延迟 (ms)
  *
- * KNOB_VEL_THRESHOLD         速度阈值 (°/ms)，高于此值视为人手正在转动。
- *                            必须大于编码器噪声 (约 0.13°/ms)。
- *                            值越大需要拧得越快才触发 bump。
+ * KNOB_DEAD_ZONE_RATIO       死区比例 + 最小 0.6° 地板 (5 个编码器 count)
+ * KNOB_BUMP_START_RATIO      爬坡起点比例 + 最小 0.8° 爬坡宽度
+ * KNOB_RETURN_FORCE_FLOOR    归中力地板 (% 占空比)
+ * KNOB_REGRAB_VEL            反向拧动检测阈值 (°/ms)
  *
- * KNOB_STILL_THRESHOLD       静止阈值 (°/ms)，低于此值视为已松手。
- *                            必须大于编码器噪声。值越大越容易触发归中。
+ * --- 自动缩放示例 ---
  *
- * KNOB_STILL_COUNT_NEEDED    连续静止多少毫秒后触发归中力。
- *                            值越小松手响应越快，但可能误触发。
- *
- * KNOB_RETURN_FORCE_PCT      归中力最大值，0 ~ 100 (% 占空比)
- *                            实际出力按偏离距离比例缩放，14% 地板。
- *                            值越大归中越快，但可能过冲振荡。
+ *   NUM_DETENTS | 半间距 | bump_max | return | 死区  | 爬坡起点
+ *   ----------- | ------ | -------- | ------ | ----- | --------
+ *          6    |  30°   |   20%    |  22%   | 3.9°  | 21.0°
+ *         12    |  15°   |   20%    |  22%   | 2.0°  | 10.5°
+ *         24    | 7.5°   |   15%    |  16%   | 1.0°  |  5.3°
+ *         48    | 3.75°  |   12%    |  14%   | 0.6°  |  3.0°
  *
  * --- 限位 ---
  *
- * KNOB_LIMIT_DEFAULT_MODE    限位模式:
- *                              KNOB_LIMIT_MODE_OFF    = 关闭 (无限旋转)
- *                              KNOB_LIMIT_MODE_SINGLE = 单边上限
- *                              KNOB_LIMIT_MODE_DUAL   = 双边上下限
- *
- * KNOB_LIMIT_DEFAULT_MIN     下界角度 (°)，仅 DUAL 模式生效
- * KNOB_LIMIT_DEFAULT_MAX     上界角度 (°)，SINGLE 和 DUAL 均生效
- *
- *                             示例:
- *                               DUAL + [-180, 180] = ±180° 范围
- *                               DUAL + [-360, 360] = ±360° 范围
- *                               DUAL + [0, 360]    = 0~360° 范围
- *                               SINGLE + max=360   = 不能超过 360°
- *                               SINGLE + max=0     = 不能超过 0° (只能负向)
- *                               OFF                = 无限旋转
- *
- * KNOB_LIMIT_SPRING_KP       限位弹簧刚度 (% 占空比每度偏差)
- *                            值越大限位越"硬"，回弹越快。
- *
+ * KNOB_LIMIT_DEFAULT_MODE    OFF / SINGLE / DUAL
+ * KNOB_LIMIT_DEFAULT_MIN     下界 (°)，仅 DUAL 生效
+ * KNOB_LIMIT_DEFAULT_MAX     上界 (°)，SINGLE/DUAL 生效
+ * KNOB_LIMIT_SPRING_KP       限位弹簧刚度 (%/°)
  * KNOB_LIMIT_SPRING_KD       限位阻尼系数
- *                            抑制弹簧振荡过冲，值越大振荡衰减越快。
+ * KNOB_LIMIT_MAX_FORCE_PCT   限位力上限 (% 占空比)
  *
- * KNOB_LIMIT_MAX_FORCE_PCT   限位弹簧最大力，0 ~ 100 (% 占空比)
+ * --- app_limit.c 额外参数 ---
  *
- * --- app_limit.c 中的额外参数 ---
- *
- * LIMIT_FORCE_FLOOR          限位地板力 (默认 20%)
- * LIMIT_SETTLE_ANGLE         稳定判定角度 (默认 3°)
- * LIMIT_SETTLE_VEL           稳定判定速度 (默认 0.3°/ms)
- * LIMIT_SETTLE_MS            连续稳定 ms 后退出弹跳 (默认 50)
- *
- * --- 其他 ---
- *
- * KNOB_RETURN_FORCE_FLOOR    归中力地板 (% 占空比)，确保克服齿轮箱静摩擦
- * KNOB_REGRAB_VEL            反向拧动检测阈值 (°/ms)
+ * LIMIT_FORCE_FLOOR / LIMIT_SETTLE_ANGLE / LIMIT_SETTLE_VEL / LIMIT_SETTLE_MS
  *
  * ======================================================================
  */
 
 // ===== 卡位可调参数 =====
-#define KNOB_DEFAULT_NUM_DETENTS   24     // 每圈卡位数 (2~90)，0 = 禁用卡位。建议最高48，再高就感觉不出来了
+// 以下为 12 卡位（半间距 15°）的基准值，Init 中会根据实际半间距自动缩放。
+// 改 KNOB_DEFAULT_NUM_DETENTS 即可，力参数和角度阈值自动适配。
 
-#define KNOB_BUMP_MAX_PCT          25     // 爬坡阻力峰值 (% 占空比)，越大齿感越重
-#define KNOB_RETURN_FORCE_PCT      44     // 归中力峰值 (% 占空比)，越大归中越快
+#define KNOB_DEFAULT_NUM_DETENTS   48     // 每圈卡位数 (2~90)，0 = 禁用卡位
+
+#define KNOB_REF_BUMP_MAX_PCT      20     // 爬坡阻力基准值 (% 占空比)
+#define KNOB_REF_RETURN_FORCE_PCT  22     // 归中力基准值 (% 占空比)
 #define KNOB_VEL_THRESHOLD         0.25f  // 转动判定阈值 (°/ms)，须 > 编码器噪声 0.13
 #define KNOB_STILL_THRESHOLD       0.18f  // 静止判定阈值 (°/ms)，须 > 编码器噪声
-#define KNOB_STILL_COUNT_NEEDED    20     // 松手判定延迟 (ms)，越小响应越快
+#define KNOB_STILL_COUNT_NEEDED    20     // 松手判定延迟 (ms)
 
-#define KNOB_DEAD_ZONE_RATIO       0.13f  // 死区比例 (0~0.5)，越大卡位中心越宽松
-#define KNOB_BUMP_START_RATIO      0.70f  // 爬坡起点比例 (0~1)，越大自由区越宽
-#define KNOB_RETURN_FORCE_FLOOR    14.0f  // 归中力地板 (% 占空比)，确保克服齿轮箱静摩擦
-#define KNOB_REGRAB_VEL            0.05f  // 反向拧动检测阈值 (°/ms)，小于编码器噪声一半
+#define KNOB_DEAD_ZONE_RATIO       0.13f  // 死区比例，自动缩放 + 最小 0.6° 地板
+#define KNOB_BUMP_START_RATIO      0.70f  // 爬坡起点比例，自动缩放 + 最小 0.8° 爬坡宽度
+#define KNOB_RETURN_FORCE_FLOOR    14.0f  // 归中力地板 (% 占空比)
+#define KNOB_REGRAB_VEL            0.05f  // 反向拧动检测阈值 (°/ms)
 
 // ===== 限位默认值 =====
 #define KNOB_LIMIT_DEFAULT_MODE    KNOB_LIMIT_MODE_DUAL  // OFF / SINGLE / DUAL
-#define KNOB_LIMIT_DEFAULT_MIN     0.0f  // 下界 (°)，仅 DUAL 生效
+#define KNOB_LIMIT_DEFAULT_MIN     -180.0f  // 下界 (°)，仅 DUAL 生效
 #define KNOB_LIMIT_DEFAULT_MAX     360.0f  // 上界 (°)，SINGLE/DUAL 生效
 #define KNOB_LIMIT_SPRING_KP       4.0f    // 限位弹簧刚度 (%/°)，越大回弹越猛
 #define KNOB_LIMIT_SPRING_KD       1.5f    // 限位阻尼，越大振荡衰减越快
@@ -136,10 +108,13 @@ static int    s_still_count;             // 连续静止计数器
 static float  s_half_spacing;            // 半间距 = detent_angle / 2
 static float  s_dead_zone;               // 死区角度 (自动缩放)
 static float  s_bump_start;              // 爬坡起始角度 (自动缩放)
+static float  s_bump_max_pct;            // 爬坡阻力峰值 (自动缩放)
+static float  s_return_force_pct;        // 归中力峰值 (自动缩放)
 static float  s_last_angle;              // 上一 tick 角度，用于计算速度
 static float  s_current_angle;           // 当前角度
 static float  s_target_angle;            // 目标角度 (最近卡位中心)
 static float  s_pid_output;              // 当前输出 (调试用，历史命名保留)
+static int    s_last_detent_idx;          // 上一 tick 的卡位编号，用于检测切换
 
 // ===== 调试用全局变量 =====
 volatile int32_t raw_count;  // 编码器原始计数值
@@ -162,12 +137,48 @@ static float FindNearestDetent(float a)
 }
 
 /**
+ * @brief 根据当前半间距重新计算所有派生参数，NUM_DETENTS 改变时自动适配。
+ * @details 力参数按半间距比例缩放（相对于 12 卡位 15° 基准），
+ *          角度参数保证最小绝对值防止死区/爬坡区过窄。
+ */
+static void RecalcDetentParams(void)
+{
+    s_half_spacing = s_detent_cfg.detent_angle * 0.5f;
+
+    // 力参数: 与半间距成比例缩放，上限为基准值
+    float scale = s_half_spacing / 15.0f;  // 以 12 卡位为基准
+    if (scale > 1.0f) scale = 1.0f;
+
+    s_bump_max_pct = KNOB_REF_BUMP_MAX_PCT * scale;
+    if (s_bump_max_pct < 12.0f) s_bump_max_pct = 12.0f;
+
+    s_return_force_pct = KNOB_REF_RETURN_FORCE_PCT * scale;
+    if (s_return_force_pct < 14.0f) s_return_force_pct = 14.0f;
+
+    // 死区: 比例缩放 + 最小 0.6° (约 5 个编码器 count)
+    s_dead_zone = s_half_spacing * KNOB_DEAD_ZONE_RATIO;
+    if (s_dead_zone < 0.6f) s_dead_zone = 0.6f;
+    s_detent_cfg.dead_zone_deg = s_dead_zone;
+
+    // 爬坡起点: 保证爬坡区宽度至少 0.8° (约 6 个 count)
+    float bump_width = s_half_spacing * (1.0f - KNOB_BUMP_START_RATIO);
+    if (bump_width < 0.8f) {
+        s_bump_start = s_half_spacing - 0.8f;
+        if (s_bump_start < s_dead_zone + 0.3f)
+            s_bump_start = s_dead_zone + 0.3f;
+    } else {
+        s_bump_start = s_half_spacing * KNOB_BUMP_START_RATIO;
+    }
+}
+
+/**
  * @brief 初始化旋钮 — 编码器、电机、卡位、限位，启动 TIM3 1kHz 中断
  */
 void App_Knob_Init(void)
 {
     BSP_KnobEncoder_Init(&htim2);
     BSP_KnobMotor_Init(&htim4);
+    BSP_KnobBuzzer_Init();
 
     // 卡位默认参数
     s_detent_cfg.num_detents    = KNOB_DEFAULT_NUM_DETENTS;
@@ -176,10 +187,7 @@ void App_Knob_Init(void)
     s_detent_cfg.max_torque_pct = 50;
 
     // 派生阈值: 全部基于半间距自动缩放
-    s_half_spacing = s_detent_cfg.detent_angle * 0.5f;
-    s_detent_cfg.dead_zone_deg = s_half_spacing * KNOB_DEAD_ZONE_RATIO;
-    s_dead_zone  = s_detent_cfg.dead_zone_deg;
-    s_bump_start = s_half_spacing * KNOB_BUMP_START_RATIO;
+    RecalcDetentParams();
 
     // 限位模块初始化
     Knob_LimitConfig_t lim = {
@@ -194,9 +202,10 @@ void App_Knob_Init(void)
 
     s_last_angle  = BSP_KnobEncoder_GetAngle();
     angle         = s_last_angle;
-    s_state       = STATE_FREE;
-    s_still_count = 0;
-    s_pid_output  = 0.0f;
+    s_state           = STATE_FREE;
+    s_still_count     = 0;
+    s_pid_output      = 0.0f;
+    s_last_detent_idx = 0;
 
     HAL_TIM_Base_Start_IT(&htim3);
 }
@@ -234,8 +243,34 @@ void App_Knob_Control(void)
     float abs_vel  = (velocity >= 0.0f) ? velocity : -velocity;
 
     // 4. 限位检查（委托 app_limit 模块，触发则跳过卡位逻辑）
-    if (App_Limit_Check(s_current_angle, velocity))
+    if (App_Limit_Check(s_current_angle, velocity)) {
+        // 限位弹跳中 — 用限位边界截断的卡位号检测切换，避免边界振荡误触
+        float clamped = s_current_angle;
+        Knob_LimitConfig_t lim;
+        App_Limit_GetConfig(&lim);
+        int check_upper = (lim.mode == KNOB_LIMIT_MODE_SINGLE || lim.mode == KNOB_LIMIT_MODE_DUAL);
+        int check_lower = (lim.mode == KNOB_LIMIT_MODE_DUAL);
+        if (check_upper && clamped > lim.limit_max_deg) clamped = lim.limit_max_deg;
+        if (check_lower && clamped < lim.limit_min_deg) clamped = lim.limit_min_deg;
+        int detent_idx = (int)(FindNearestDetent(clamped) / s_detent_cfg.detent_angle);
+
+        BSP_KnobBuzzer_Tick();
+        if (detent_idx != s_last_detent_idx) {
+            s_last_detent_idx = detent_idx;
+            BSP_KnobBuzzer_Click();
+        }
         return;
+    }
+
+    // 蜂鸣器脉冲计时 + 卡位切换检测（正常路径）
+    BSP_KnobBuzzer_Tick();
+    {
+        int det_idx = (int)(s_target_angle / s_detent_cfg.detent_angle);
+        if (det_idx != s_last_detent_idx) {
+            s_last_detent_idx = det_idx;
+            BSP_KnobBuzzer_Click();
+        }
+    }
 
     // 5. 卡位已禁用 → 完全自由
     if (s_detent_cfg.num_detents == 0) {
@@ -265,7 +300,7 @@ void App_Knob_Control(void)
             // 归中力 = 距中心比例 × 最大归中力，14% 地板防推不动齿轮箱
             float ratio = abs_err / s_half_spacing;
             if (ratio > 1.0f) ratio = 1.0f;
-            s_pid_output = (float)KNOB_RETURN_FORCE_PCT * ratio;
+            s_pid_output = s_return_force_pct * ratio;
             if (s_pid_output < KNOB_RETURN_FORCE_FLOOR) s_pid_output = KNOB_RETURN_FORCE_FLOOR;
             if (error > 0.0f) {
                 BSP_KnobMotor_SetOutput(KNOB_MOTOR_DIR_FORWARD, (uint8_t)s_pid_output);
@@ -303,11 +338,11 @@ void App_Knob_Control(void)
         return;
     }
 
-    // 11. 爬坡: 逆向阻力从 0 线性爬升至 KNOB_BUMP_MAX_PCT
+    // 11. 爬坡: 逆向阻力从 0 线性爬升至 s_bump_max_pct
     float ramp_range = s_half_spacing - s_bump_start;
     float ramp = (abs_err - s_bump_start) / ramp_range;
     if (ramp > 1.0f) ramp = 1.0f;
-    s_pid_output = (float)KNOB_BUMP_MAX_PCT * ramp;
+    s_pid_output = s_bump_max_pct * ramp;
 
     // 阻力方向与转动方向相反
     if (velocity > 0.0f) {
@@ -358,10 +393,7 @@ void App_Knob_SetDetentConfig(const Knob_DetentConfig_t *cfg)
     s_detent_cfg = *cfg;
     if (s_detent_cfg.num_detents > 0)
         s_detent_cfg.detent_angle = 360.0f / (float)s_detent_cfg.num_detents;
-    s_half_spacing = s_detent_cfg.detent_angle * 0.5f;
-    s_detent_cfg.dead_zone_deg = s_half_spacing * KNOB_DEAD_ZONE_RATIO;
-    s_dead_zone  = s_detent_cfg.dead_zone_deg;
-    s_bump_start = s_half_spacing * KNOB_BUMP_START_RATIO;
+    RecalcDetentParams();
 }
 
 /**
