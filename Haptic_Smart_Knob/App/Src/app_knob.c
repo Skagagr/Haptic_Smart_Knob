@@ -12,11 +12,15 @@
  */
 #include "app_knob.h"
 #include <stdio.h>
+#include "app_isr.h"
 #include "app_limit.h"
 #include "bsp_knob_encoder.h"
 #include "bsp_knob_motor.h"
 #include "bsp_knob_buzzer.h"
-#include "tim.h"
+
+extern TIM_HandleTypeDef htim2;
+extern TIM_HandleTypeDef htim3;
+extern TIM_HandleTypeDef htim4;
 
 /**
  * ============================== 可调参数说明 ==============================
@@ -84,14 +88,6 @@
 #define KNOB_BUMP_START_RATIO      0.70f  // 爬坡起点比例，自动缩放 + 最小 0.8° 爬坡宽度
 #define KNOB_RETURN_FORCE_FLOOR    14.0f  // 归中力地板 (% 占空比)
 #define KNOB_REGRAB_VEL            0.05f  // 反向拧动检测阈值 (°/ms)
-
-// ===== 限位默认值 =====
-#define KNOB_LIMIT_DEFAULT_MODE    KNOB_LIMIT_MODE_DUAL  // OFF / SINGLE / DUAL
-#define KNOB_LIMIT_DEFAULT_MIN     -180.0f  // 下界 (°)，仅 DUAL 生效
-#define KNOB_LIMIT_DEFAULT_MAX     360.0f  // 上界 (°)，SINGLE/DUAL 生效
-#define KNOB_LIMIT_SPRING_KP       4.0f    // 限位弹簧刚度 (%/°)，越大回弹越猛
-#define KNOB_LIMIT_SPRING_KD       1.5f    // 限位阻尼，越大振荡衰减越快
-#define KNOB_LIMIT_MAX_FORCE_PCT   55      // 限位力上限 (% 占空比)
 
 /**
  * @brief 旋钮行为状态
@@ -171,9 +167,6 @@ static void RecalcDetentParams(void)
     }
 }
 
-/**
- * @brief 初始化旋钮 — 编码器、电机、卡位、限位，启动 TIM3 1kHz 中断
- */
 void App_Knob_Init(void)
 {
     BSP_KnobEncoder_Init(&htim2);
@@ -181,24 +174,14 @@ void App_Knob_Init(void)
     BSP_KnobBuzzer_Init();
 
     // 卡位默认参数
-    s_detent_cfg.num_detents    = KNOB_DEFAULT_NUM_DETENTS;
-    s_detent_cfg.detent_angle   = 360.0f / (float)KNOB_DEFAULT_NUM_DETENTS;
-    s_detent_cfg.window_deg     = 15.0f;
-    s_detent_cfg.max_torque_pct = 50;
+    s_detent_cfg.num_detents  = KNOB_DEFAULT_NUM_DETENTS;
+    s_detent_cfg.detent_angle = 360.0f / (float)KNOB_DEFAULT_NUM_DETENTS;
 
     // 派生阈值: 全部基于半间距自动缩放
     RecalcDetentParams();
 
     // 限位模块初始化
-    Knob_LimitConfig_t lim = {
-        .mode          = KNOB_LIMIT_DEFAULT_MODE,
-        .limit_min_deg = KNOB_LIMIT_DEFAULT_MIN,
-        .limit_max_deg = KNOB_LIMIT_DEFAULT_MAX,
-        .spring_kp     = KNOB_LIMIT_SPRING_KP,
-        .spring_kd     = KNOB_LIMIT_SPRING_KD,
-        .max_force_pct = KNOB_LIMIT_MAX_FORCE_PCT,
-    };
-    App_Limit_Init(&lim);
+    App_Limit_Init();
 
     s_last_angle  = BSP_KnobEncoder_GetAngle();
     angle         = s_last_angle;
@@ -210,21 +193,6 @@ void App_Knob_Init(void)
     HAL_TIM_Base_Start_IT(&htim3);
 }
 
-/**
- * @brief 控制循环 — TIM3 ISR 中以 1kHz 频率调用
- * @details 执行顺序:
- *          1. 读取编码器角度
- *          2. 找到最近卡位中心 (setpoint)
- *          3. 计算角速度
- *          4. 限位检查 (委托 app_limit，触发则跳过后续)
- *          5. 卡位禁用 → 自由模式
- *          6. 死区内 → 电机停止
- *          7. 归中状态 → 持续推向卡位中心
- *          8. 静止检测 → 达标后切换归中
- *          9. 自由区 → 电机停止 (大部分行程)
- *         10. 已过中点 → 自由滑入下一卡位
- *         11. 爬坡 → 逆向阻力线性增长
- */
 void App_Knob_Control(void)
 {
     // 1. 读取传感器
@@ -352,9 +320,6 @@ void App_Knob_Control(void)
     }
 }
 
-/**
- * @brief 串口调试输出，每秒一次。限位开启时 Det# 截断到限位边界内
- */
 void App_Knob_Debug(void)
 {
     float display_angle  = s_current_angle;
@@ -376,18 +341,13 @@ void App_Knob_Debug(void)
 
     printf("Angle: %8.2f  Target: %8.2f  Err: %+7.2f  "
            "Out: %+6.2f  Det#: %4.0f\r\n",
-           s_current_angle,
-           display_target,
-           display_target - s_current_angle,
-           s_pid_output,
-           display_target / s_detent_cfg.detent_angle);
+           (double)s_current_angle,
+           (double)display_target,
+           (double)(display_target - s_current_angle),
+           (double)s_pid_output,
+           (double)(display_target / s_detent_cfg.detent_angle));
 }
 
-/**
- * @brief 运行时设置卡位配置
- * @details 自动从 num_detents 重算 detent_angle，无需调用者手动维护
- * @param cfg 卡位配置指针
- */
 void App_Knob_SetDetentConfig(const Knob_DetentConfig_t *cfg)
 {
     s_detent_cfg = *cfg;
@@ -396,21 +356,7 @@ void App_Knob_SetDetentConfig(const Knob_DetentConfig_t *cfg)
     RecalcDetentParams();
 }
 
-/**
- * @brief 读取当前卡位配置
- * @param cfg 输出配置指针
- */
 void App_Knob_GetDetentConfig(Knob_DetentConfig_t *cfg)
 {
     *cfg = s_detent_cfg;
-}
-
-/**
- * @brief TIM3 周期中断回调，1kHz。HAL 弱符号覆盖
- */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-    if (htim->Instance == TIM3) {
-        App_Knob_Control();
-    }
 }

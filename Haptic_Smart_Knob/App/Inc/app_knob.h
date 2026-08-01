@@ -19,8 +19,6 @@ typedef struct {
     uint8_t num_detents;          // 每圈卡位数，0 = 禁用卡位
     float   detent_angle;         // 卡位间距角度 (360.0f / num_detents)
     float   dead_zone_deg;        // 死区 ±°，卡位中心附近电机不输出
-    float   window_deg;           // 保留字段
-    uint8_t max_torque_pct;       // 保留字段
 } Knob_DetentConfig_t;
 
 /**

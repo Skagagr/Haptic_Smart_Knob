@@ -28,7 +28,6 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include "app_knob.h"
-#include "bsp_knob_encoder.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/

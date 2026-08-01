@@ -22,21 +22,18 @@ static int    s_bounce_active;           // 1 = 弹跳模式激活中
 static float  s_bounce_target;           // 弹簧锚点角度（限位边界值）
 static int    s_settle_count;            // 连续稳定计数器
 
-/**
- * @brief 初始化限位模块
- * @param cfg 限位配置指针
- */
-void App_Limit_Init(const Knob_LimitConfig_t *cfg)
+void App_Limit_Init(void)
 {
-    s_cfg = *cfg;
+    s_cfg.mode          = KNOB_LIMIT_DEFAULT_MODE;
+    s_cfg.limit_min_deg = KNOB_LIMIT_DEFAULT_MIN;
+    s_cfg.limit_max_deg = KNOB_LIMIT_DEFAULT_MAX;
+    s_cfg.spring_kp     = KNOB_LIMIT_SPRING_KP;
+    s_cfg.spring_kd     = KNOB_LIMIT_SPRING_KD;
+    s_cfg.max_force_pct = KNOB_LIMIT_MAX_FORCE_PCT;
     s_bounce_active = 0;
     s_settle_count  = 0;
 }
 
-/**
- * @brief 运行时更新限位配置（会重置弹跳状态）
- * @param cfg 限位配置指针
- */
 void App_Limit_SetConfig(const Knob_LimitConfig_t *cfg)
 {
     s_cfg = *cfg;
@@ -44,21 +41,11 @@ void App_Limit_SetConfig(const Knob_LimitConfig_t *cfg)
     s_settle_count  = 0;
 }
 
-/**
- * @brief 读取当前限位配置
- * @param cfg 输出配置指针
- */
 void App_Limit_GetConfig(Knob_LimitConfig_t *cfg)
 {
     *cfg = s_cfg;
 }
 
-/**
- * @brief 执行限位检查
- * @param angle    当前旋钮角度 (°)
- * @param velocity 角速度 (°/ms)
- * @return 1 = 限位弹簧占用本次 tick，0 = 角度在界内
- */
 int App_Limit_Check(float angle, float velocity)
 {
     // 限位关闭 → 不做任何处理

@@ -11,6 +11,14 @@
 
 #include <stdint.h>
 
+// ===== 限位默认值 =====
+#define KNOB_LIMIT_DEFAULT_MODE    KNOB_LIMIT_MODE_DUAL  // OFF / SINGLE / DUAL
+#define KNOB_LIMIT_DEFAULT_MIN     -180.0f  // 下界 (°)，仅 DUAL 生效
+#define KNOB_LIMIT_DEFAULT_MAX     360.0f  // 上界 (°)，SINGLE/DUAL 生效
+#define KNOB_LIMIT_SPRING_KP       4.0f    // 限位弹簧刚度 (%/°)，越大回弹越猛
+#define KNOB_LIMIT_SPRING_KD       1.5f    // 限位阻尼，越大振荡衰减越快
+#define KNOB_LIMIT_MAX_FORCE_PCT   55      // 限位力上限 (% 占空比)
+
 /**
  * @brief 限位模式
  */
@@ -33,10 +41,9 @@ typedef struct {
 } Knob_LimitConfig_t;
 
 /**
- * @brief 初始化限位模块
- * @param cfg 限位配置指针
+ * @brief 初始化限位模块，使用默认配置
  */
-void App_Limit_Init(const Knob_LimitConfig_t *cfg);
+void App_Limit_Init(void);
 
 /**
  * @brief 运行时更新限位配置（会重置弹跳状态）
