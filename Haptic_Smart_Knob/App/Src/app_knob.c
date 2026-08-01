@@ -100,10 +100,10 @@
  */
 
 // ===== 卡位可调参数 =====
-#define KNOB_DEFAULT_NUM_DETENTS   12     // 每圈卡位数 (2~90)，0 = 禁用卡位
+#define KNOB_DEFAULT_NUM_DETENTS   24     // 每圈卡位数 (2~90)，0 = 禁用卡位。建议最高48，再高就感觉不出来了
 
-#define KNOB_BUMP_MAX_PCT          20     // 爬坡阻力峰值 (% 占空比)，越大齿感越重
-#define KNOB_RETURN_FORCE_PCT      22     // 归中力峰值 (% 占空比)，越大归中越快
+#define KNOB_BUMP_MAX_PCT          25     // 爬坡阻力峰值 (% 占空比)，越大齿感越重
+#define KNOB_RETURN_FORCE_PCT      44     // 归中力峰值 (% 占空比)，越大归中越快
 #define KNOB_VEL_THRESHOLD         0.25f  // 转动判定阈值 (°/ms)，须 > 编码器噪声 0.13
 #define KNOB_STILL_THRESHOLD       0.18f  // 静止判定阈值 (°/ms)，须 > 编码器噪声
 #define KNOB_STILL_COUNT_NEEDED    20     // 松手判定延迟 (ms)，越小响应越快
