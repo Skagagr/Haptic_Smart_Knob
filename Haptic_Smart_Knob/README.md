@@ -97,32 +97,41 @@ Drivers/BSP/
 
 ## 参数调优
 
-所有可调参数集中在 `App/Src/app_knob.c` 顶部，改 `#define` 即可。
+只需改 `KNOB_DEFAULT_NUM_DETENTS` 一个宏。所有力参数和角度阈值自动按半间距缩放。
 
-### 卡位参数
+### 卡位参数（自动缩放）
 
 | 宏 | 默认值 | 说明 |
 |----|--------|------|
-| `KNOB_DEFAULT_NUM_DETENTS` | 24 | 每圈卡位数 (2~90, 0=禁用) |
-| `KNOB_DEAD_ZONE_RATIO` | 0.13 | 死区比例，越大中心越宽松 |
-| `KNOB_BUMP_START_RATIO` | 0.70 | 爬坡起点比例，越大自由区越宽 |
-| `KNOB_BUMP_MAX_PCT` | 20 | 爬坡阻力峰值 (% 占空比) |
-| `KNOB_RETURN_FORCE_PCT` | 22 | 归中力峰值 (% 占空比) |
-| `KNOB_RETURN_FORCE_FLOOR` | 14 | 归中力地板 (% 占空比) |
+| `KNOB_DEFAULT_NUM_DETENTS` | 48 | 每圈卡位数 (2~90, 0=禁用)，改这一个即可 |
+| `KNOB_REF_BUMP_MAX_PCT` | 20 | 爬坡阻力基准值 (12 卡位时的值) |
+| `KNOB_REF_RETURN_FORCE_PCT` | 22 | 归中力基准值 (12 卡位时的值) |
+| `KNOB_DEAD_ZONE_RATIO` | 0.13 | 死区比例 + 最小 0.6° 地板 |
+| `KNOB_BUMP_START_RATIO` | 0.70 | 爬坡起点比例 + 最小 0.8° 爬坡宽度 |
+| `KNOB_RETURN_FORCE_FLOOR` | 14.0 | 归中力地板 (% 占空比) |
 | `KNOB_VEL_THRESHOLD` | 0.25 | 转动判定阈值 (°/ms) |
 | `KNOB_STILL_THRESHOLD` | 0.18 | 静止判定阈值 (°/ms) |
 | `KNOB_STILL_COUNT_NEEDED` | 20 | 松手判定延迟 (ms) |
+
+**自动缩放对照表：**
+
+| NUM_DETENTS | 半间距 | bump力 | 归中力 | 死区 | 爬坡起点 |
+|:---:|:---:|:---:|:---:|:---:|:---:|
+| 6 | 30° | 20% | 22% | 3.9° | 21.0° |
+| 12 | 15° | 20% | 22% | 2.0° | 10.5° |
+| 24 | 7.5° | 15% | 16% | 1.0° | 5.3° |
+| 48 | 3.75° | 12% | 14% | 0.6° | 3.0° |
 
 ### 限位参数
 
 | 宏 | 默认值 | 说明 |
 |----|--------|------|
-| `KNOB_LIMIT_DEFAULT_MODE` | DUAL | 限位模式: OFF / SINGLE / DUAL |
+| `KNOB_LIMIT_DEFAULT_MODE` | DUAL | OFF / SINGLE / DUAL |
 | `KNOB_LIMIT_DEFAULT_MIN` | -180 | 下界 (°) |
-| `KNOB_LIMIT_DEFAULT_MAX` | 180 | 上界 (°) |
-| `KNOB_LIMIT_SPRING_KP` | 4.0 | 限位弹簧刚度 (%/°) |
-| `KNOB_LIMIT_SPRING_KD` | 1.5 | 限位阻尼系数 |
-| `KNOB_LIMIT_MAX_FORCE_PCT` | 85 | 限位力上限 (% 占空比) |
+| `KNOB_LIMIT_DEFAULT_MAX` | 360 | 上界 (°) |
+| `KNOB_LIMIT_SPRING_KP` | 4.0 | 弹簧刚度 (%/°) |
+| `KNOB_LIMIT_SPRING_KD` | 1.5 | 阻尼系数 |
+| `KNOB_LIMIT_MAX_FORCE_PCT` | 55 | 力上限 (% 占空比) |
 
 ### 限位使用示例
 
@@ -130,20 +139,14 @@ Drivers/BSP/
 // 关闭限位，仅卡位
 #define KNOB_LIMIT_DEFAULT_MODE  KNOB_LIMIT_MODE_OFF
 
-// 单边限位：不能超过 360°
+// 单边上限：不能超过 360°
 #define KNOB_LIMIT_DEFAULT_MODE  KNOB_LIMIT_MODE_SINGLE
 #define KNOB_LIMIT_DEFAULT_MAX   360.0f
 
-// 双边限位：只能在 0~360° 之间
-#define KNOB_LIMIT_DEFAULT_MODE  KNOB_LIMIT_MODE_DUAL
-#define KNOB_LIMIT_DEFAULT_MIN   0.0f
-#define KNOB_LIMIT_DEFAULT_MAX   360.0f
-
-// 限位 + 卡位同时生效（默认）
+// 双边限位：-180° ~ 360°
 #define KNOB_LIMIT_DEFAULT_MODE  KNOB_LIMIT_MODE_DUAL
 #define KNOB_LIMIT_DEFAULT_MIN   -180.0f
-#define KNOB_LIMIT_DEFAULT_MAX   180.0f
-#define KNOB_DEFAULT_NUM_DETENTS 24
+#define KNOB_LIMIT_DEFAULT_MAX   360.0f
 
 // 仅限位，无卡位
 #define KNOB_LIMIT_DEFAULT_MODE  KNOB_LIMIT_MODE_DUAL
