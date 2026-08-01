@@ -18,14 +18,7 @@ static int s_cooldown;         // 剩余冷却时间 (ms)
 
 void BSP_KnobBuzzer_Init(void)
 {
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    GPIO_InitStruct.Pin   = KNOB_BUZZER_PIN;
-    GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull  = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(KNOB_BUZZER_PORT, &GPIO_InitStruct);
-    HAL_GPIO_WritePin(KNOB_BUZZER_PORT, KNOB_BUZZER_PIN, GPIO_PIN_SET);  // 低电平触发, 默认高=静音
+    HAL_GPIO_WritePin(KNOB_BUZZER_PORT, KNOB_BUZZER_PIN, GPIO_PIN_SET);  // CubeMX 初始化后 PB0=0，拉高静音
     s_pulse_remaining = 0;
     s_cooldown        = 0;
 }

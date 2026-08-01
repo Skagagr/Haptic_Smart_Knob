@@ -1,9 +1,9 @@
 /**
  * @file    bsp_knob_buzzer.h
- * @brief   蜂鸣器驱动 — 有源蜂鸣器，GPIO 高低电平控制。
- * @details PB0 输出高低电平。有源蜂鸣器自带振荡电路，通电即响。
- *          Click() 触发约 15ms 脉冲，模拟机械卡位的喀嗒声。
- *          Tick() 需在 ISR 中以 1kHz 调用以管理脉冲计时。
+ * @brief   蜂鸣器驱动 — 有源蜂鸣器，低电平触发。
+ * @details PB0 在 CubeMX 已配置 Output PP。Init() 仅拉高静音。
+ *          Click() 触发 5ms 脉冲 + 50ms 冷却防连响。
+ *          Tick() 需在 1kHz ISR 中调用以管理脉冲计时。
  * @version 1.0.0
  * @date    2026/7/31
  */
@@ -15,7 +15,7 @@
 #define KNOB_BUZZER_PIN     GPIO_PIN_0
 
 /**
- * @brief 初始化蜂鸣器 — PB0 推挽输出，默认低电平
+ * @brief 初始化蜂鸣器 — 拉高 PB0 静音，清零脉冲/冷却计数
  */
 void BSP_KnobBuzzer_Init(void);
 
