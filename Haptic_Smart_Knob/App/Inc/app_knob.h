@@ -3,7 +3,7 @@
  * @brief   力反馈旋钮 — EC11 棘轮式虚拟卡位。
  * @details TIM3 1kHz 中断驱动。可选的物理限位由 app_limit 模块处理
  *          （通过 app_limit.h 间接引入）。num_detents = 0 禁用卡位。
- * @version 1.0.0
+ * @version 1.1.0
  * @date    2026/7/31
  */
 #ifndef APP_KNOB_H
