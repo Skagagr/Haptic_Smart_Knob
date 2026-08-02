@@ -2,32 +2,44 @@
 
 基于 STM32F103C8T6，参考 [scottbez1/smartknob](https://github.com/scottbez1/smartknob) 设计。
 
+---
+
 ## 已实现功能
 
-### 虚拟卡位（EC11 棘轮手感）
-- 中点位能峰 bump 模型：卡位之间电机自由（如同未通电），接近中点时逆向阻力线性爬升，翻过中点后阻力释放滑入下一卡位
-- 松手检测：连续静止后自动归中到最近卡位
-- 每圈卡位数可调（2~90），死区/爬坡起点按比例自动缩放
-- 卡位可独立关闭（设为 0 即自由旋转）
+### 虚拟卡位（棘轮手感）
+- **中点位能峰 bump 模型**：卡位之间电机自由（如同未通电），接近中点时逆向阻力线性爬升，翻过中点后阻力释放滑入下一卡位
+- **松手归中**：连续静止 20ms 后自动归中到最近卡位
+- **预设方案**：6/12/24/48 卡位 + 完全平滑（5 种预设，一键切换）
+- **力度可调**：卡位阻力和归中力分别可调（1-10 档）
+- **蜂鸣反馈**：跨过卡位时触发短促蜂鸣音效
 
 ### 角度限位
-- 三种模式：关闭 / 单边上限 / 双边上下限
-- 双向弹簧 + 速度阻尼，越过边界后产生真实弹簧式来回弹跳振荡
-- 限位弹簧刚度、阻尼、最大力均可调
-- 限位可与卡位共存，也可独立使用
+- **三种模式**：关闭 / 单边上限 / 双边上下限
+- **物理弹簧模拟**：双向弹簧 + 速度阻尼，越过边界后产生真实弹簧式来回弹跳振荡
+- **参数可调**：弹簧刚度、阻尼、最大力均可调
+- **限位音效**：撞击限位边界时触发蜂鸣提示
+- **与卡位共存**：限位可与卡位同时使用，也可独立使用
 
 ### 1kHz 闭环控制
-- TIM3 1kHz 中断驱动控制循环
-- 先检查限位，再执行卡位逻辑
+- **TIM3 1kHz 中断**驱动控制循环
+- **优先级管理**：限位优先级高于卡位（边界保护）
+- **智能蜂鸣**：
+  - 限位激活时卡位检测和 Det# 同步冻结，避免超出边界时误触发
+  - 边界振荡时 100ms 去抖保护，防止连续响
+  - 可在 `App/Src/app_knob_limit.c` 中修改 `LIMIT_DEBOUNCE_MS` 调整去抖时间
+- **低延迟响应**：传感器读取 → 状态机 → 力输出 < 1ms
+
+---
 
 ## 硬件
 
-| 组件 | 型号 |
-|------|------|
-| MCU | STM32F103C8T6 (Cortex-M3, 72MHz) |
-| 电机 | N20 直流减速电机 (100:1) |
-| 电机驱动 | TB6612 (H 桥) |
-| 编码器 | N20 自带增量式 (7 PPR × 4 倍频 × 100 减速比 = 2800 CPR) |
+| 组件 | 型号 | 说明 |
+|------|------|------|
+| MCU | STM32F103C8T6 | Cortex-M3, 72MHz, 20KB RAM, 64KB Flash |
+| 电机 | N20 直流减速电机 | 100:1 减速比，6V 供电 |
+| 电机驱动 | TB6612FNG | 双 H 桥驱动芯片 |
+| 编码器 | N20 自带增量式 | 7 PPR × 4 倍频 × 100 减速比 = 2800 CPR |
+| 蜂鸣器 | 有源蜂鸣器 | 低电平触发，PB0 |
 
 ### N20 电机接线
 
@@ -49,8 +61,8 @@
 | VM | 电机电源正极 **6V** |
 | VCC | STM32 **3.3V** |
 | GND | 接系统共地 |
-| AO1 | 电机**红线** (电机电源+) |
-| AO2 | 电机**白线** (电机电源-) |
+| AO1 | 电机**白线** (电机电源-) |
+| AO2 | 电机**红线** (电机电源+) |
 | BO2 | 空置不接 |
 | BO1 | 空置不接 |
 | GND | 接系统共地 |
@@ -62,7 +74,7 @@
 | PWMA | STM32 **PB6** (TIM4_CH1) |
 | AIN2 | STM32 **PB8** |
 | AIN1 | STM32 **PB7** |
-| STBY | STM32 **PB9** |
+| STBY | STM32 **PB9** (必须拉高使能) |
 | BIN1 | 接 **GND** (B通道不用) |
 | BIN2 | 接 **GND** (B通道不用) |
 | PWMB | 空置不接 |
@@ -76,171 +88,296 @@
 | TIM3 | 1kHz 控制循环中断 | PSC=71, ARR=999 → 72MHz/72/1000=1kHz |
 | TIM4 CH1 | 电机 PWM (PB6) | PWM Mode 1, PSC=0, ARR=999, 占空比=CCR/1000 |
 | PB7/PB8 | TB6612 AIN1/AIN2 方向控制 | GPIO Output |
-| PB9 | TB6612 STBY 使能 | GPIO Output, 拉高使能 |
+| PB9 | TB6612 STBY 使能 | GPIO Output, **必须拉高使能** |
+| PB0 | 有源蜂鸣器 | GPIO Output, 低电平触发 |
 | USART1 | 调试串口 | 115200, 8N1, TX=PA9, RX=PA10(可不接) |
 
-## 软件架构
+---
+
+## 软件架构（v2.0 新架构）
+
+### 分层设计
+
+```
+┌────────────────────────────────────────────────┐
+│  app_knob_ctrl.c (控制协调层)                   │
+│  - 1kHz 控制循环入口                            │
+│  - 读取传感器，调度状态机                       │
+│  - 协调卡位/限位/蜂鸣器                         │
+└────────────┬───────────────────────────────────┘
+             │
+  ┌──────────┼──────────┬─────────────┐
+  │          │          │             │
+┌─▼──────┐ ┌─▼──────┐ ┌─▼──────┐ ┌───▼────┐
+│physics │ │ state  │ │ limit  │ │ event  │
+│卡位物理│ │ 状态机  │ │ 限位   │ │ 事件   │
+│模型    │ │        │ │ 模块   │ │ 层     │
+└────────┘ └────────┘ └────────┘ └────────┘
+     │          │          │          │
+     └──────────┴──────────┴──────────┘
+                │
+        ┌───────▼────────┐
+        │  BSP 层        │
+        │  硬件抽象层     │
+        └────────────────┘
+```
+
+### 文件结构
 
 ```
 App/
-  Inc/
-    app_knob.h      卡位配置 + API
-    app_limit.h     限位模式/配置 + API
-    app_isr.h       HAL 回调入口
-  Src/
-    app_knob.c      卡位 bump 控制 + 归中状态机
-    app_limit.c     限位双向弹簧 + 阻尼
-    app_isr.c       HAL 弱符号覆盖（TIM3 1kHz → App_Knob_Control）
+├── Inc/
+│   ├── app_knob_types.h       # 公共类型定义（配置、状态、数据结构）
+│   ├── app_knob_physics.h     # 卡位物理模型接口（纯函数）
+│   ├── app_knob_state.h       # 状态机接口（显式状态转换）
+│   ├── app_knob_limit.h       # 限位模块接口（事件驱动）
+│   ├── app_knob_event.h       # 事件通知层（蜂鸣器管理）
+│   ├── app_knob_ctrl.h        # 控制协调层（顶层入口）
+│   └── app_isr.h              # HAL 回调入口
+└── Src/
+    ├── app_knob_physics.c     # 预设参数 + 力计算
+    ├── app_knob_state.c       # 状态机实现（FREE/RETURNING/LIMIT_BOUNCE）
+    ├── app_knob_limit.c       # 双向弹簧 + 阻尼
+    ├── app_knob_event.c       # 卡位检测 + 蜂鸣触发
+    ├── app_knob_ctrl.c        # 主控制循环
+    └── app_isr.c              # TIM3 1kHz → App_Knob_Control
 
 Drivers/BSP/
-  Knob_Motor/       N20 + TB6612 电机驱动
-  Knob_Encoder/     TIM2 编码器读取 + 角度换算
-  Knob_Buzzer/      有源蜂鸣器 (PB0)
+├── Knob_Motor/                # N20 + TB6612 电机驱动
+├── Knob_Encoder/              # TIM2 编码器读取 + 角度换算
+└── Knob_Buzzer/               # 有源蜂鸣器驱动（脉冲管理）
 ```
 
-## 参数调优
+### 模块职责
 
-只需改 `KNOB_DEFAULT_NUM_DETENTS` 一个宏。所有力参数和角度阈值自动按半间距缩放。
+| 模块 | 职责 |
+|------|------|
+| **physics** | 查找卡位、计算力输出（无状态纯函数） |
+| **state** | 管理 FREE/RETURNING/LIMIT_BOUNCE 三种状态 |
+| **limit** | 限位检测、弹簧力计算、事件回调 |
+| **event** | 卡位切换检测、蜂鸣器触发 |
+| **ctrl** | 协调所有模块、主控制循环 |
+| **isr** | HAL 弱符号覆盖 |
 
-### 卡位参数（自动缩放）
+---
 
-| 宏 | 默认值 | 说明 |
-|----|--------|------|
-| `KNOB_DEFAULT_NUM_DETENTS` | 48 | 每圈卡位数 (2~90, 0=禁用)，改这一个即可 |
-| `KNOB_REF_BUMP_MAX_PCT` | 20 | 爬坡阻力基准值 (12 卡位时的值) |
-| `KNOB_REF_RETURN_FORCE_PCT` | 22 | 归中力基准值 (12 卡位时的值) |
-| `KNOB_DEAD_ZONE_RATIO` | 0.13 | 死区比例 + 最小 0.6° 地板 |
-| `KNOB_BUMP_START_RATIO` | 0.70 | 爬坡起点比例 + 最小 0.8° 爬坡宽度 |
-| `KNOB_RETURN_FORCE_FLOOR` | 14.0 | 归中力地板 (% 占空比) |
-| `KNOB_VEL_THRESHOLD` | 0.25 | 转动判定阈值 (°/ms) |
-| `KNOB_STILL_THRESHOLD` | 0.18 | 静止判定阈值 (°/ms) |
-| `KNOB_STILL_COUNT_NEEDED` | 20 | 松手判定延迟 (ms) |
+## 快速开始
 
-**自动缩放对照表：**
+### 1. 修改配置
 
-| NUM_DETENTS | 半间距 | bump力 | 归中力 | 死区 | 爬坡起点 |
-|:---:|:---:|:---:|:---:|:---:|:---:|
-| 6 | 30° | 20% | 22% | 3.9° | 21.0° |
-| 12 | 15° | 20% | 22% | 2.0° | 10.5° |
-| 24 | 7.5° | 15% | 16% | 1.0° | 5.3° |
-| 48 | 3.75° | 12% | 14% | 0.6° | 3.0° |
-
-### 限位参数
-
-| 宏 | 默认值 | 说明 |
-|----|--------|------|
-| `KNOB_LIMIT_DEFAULT_MODE` | DUAL | OFF / SINGLE / DUAL |
-| `KNOB_LIMIT_DEFAULT_MIN` | -180 | 下界 (°) |
-| `KNOB_LIMIT_DEFAULT_MAX` | 360 | 上界 (°) |
-| `KNOB_LIMIT_SPRING_KP` | 4.0 | 弹簧刚度 (%/°) |
-| `KNOB_LIMIT_SPRING_KD` | 1.5 | 阻尼系数 |
-| `KNOB_LIMIT_MAX_FORCE_PCT` | 55 | 力上限 (% 占空比) |
-
-### 限位使用示例
+打开 `App/Src/app_knob_ctrl.c`，找到第 49-52 行：
 
 ```c
-// 关闭限位，仅卡位
-#define KNOB_LIMIT_DEFAULT_MODE  KNOB_LIMIT_MODE_OFF
-
-// 单边上限：不能超过 360°
-#define KNOB_LIMIT_DEFAULT_MODE  KNOB_LIMIT_MODE_SINGLE
-#define KNOB_LIMIT_DEFAULT_MAX   360.0f
-
-// 双边限位：-180° ~ 360°
-#define KNOB_LIMIT_DEFAULT_MODE  KNOB_LIMIT_MODE_DUAL
-#define KNOB_LIMIT_DEFAULT_MIN   -180.0f
-#define KNOB_LIMIT_DEFAULT_MAX   360.0f
-
-// 仅限位，无卡位
-#define KNOB_LIMIT_DEFAULT_MODE  KNOB_LIMIT_MODE_DUAL
-#define KNOB_DEFAULT_NUM_DETENTS 0
+void App_Knob_Init(void)
+{
+    // 默认配置：48 卡位，中等力度
+    s_config.preset = KNOB_PRESET_DENSE_48;  // ← 改这里
+    s_config.detent_strength = 7;             // ← 改这里 (1-10)
+    s_config.return_strength = 8;             // ← 改这里 (1-10)
 ```
 
-## 运行时 API
+**可选预设：**
+```c
+KNOB_PRESET_COARSE_6    // 6 卡位/圈，粗糙手感
+KNOB_PRESET_NORMAL_12   // 12 卡位/圈，标准手感
+KNOB_PRESET_FINE_24     // 24 卡位/圈，精细手感
+KNOB_PRESET_DENSE_48    // 48 卡位/圈，密集手感
+KNOB_PRESET_SMOOTH      // 完全平滑，无卡位
+```
 
-App 层提供以下运行时配置接口（无需重编译即可调整）：
+**力度参数：**
+- `detent_strength (1-10)` - 卡位爬坡阻力，数值越大越难翻过卡位
+- `return_strength (1-10)` - 松手归中力，数值越大归中速度越快
+
+### 2. 修改限位配置
+
+打开 `App/Inc/app_knob_limit.h`，修改第 15-20 行：
 
 ```c
-// ---- 卡位 ----
-App_Knob_SetDetentConfig(&cfg);  // 运行时修改卡位参数
-App_Knob_GetDetentConfig(&cfg);  // 读取当前卡位参数
-
-// ---- 限位 ----
-App_Limit_SetConfig(&cfg);       // 运行时修改限位参数
-App_Limit_GetConfig(&cfg);       // 读取当前限位参数
+#define KNOB_LIMIT_DEFAULT_MODE    KNOB_LIMIT_MODE_DUAL  // OFF/SINGLE/DUAL
+#define KNOB_LIMIT_DEFAULT_MIN     -180.0f  // 下界角度
+#define KNOB_LIMIT_DEFAULT_MAX     360.0f   // 上界角度
+#define KNOB_LIMIT_SPRING_KP       4.0f     // 弹簧刚度（越大越硬）
+#define KNOB_LIMIT_SPRING_KD       1.5f     // 阻尼（越大振荡衰减越快）
+#define KNOB_LIMIT_MAX_FORCE_PCT   55       // 限位最大推力 (%)
 ```
 
-示例 — 从 main.c 运行时开启限位：
+---
+
+## 配置示例
+
+### 示例 1：强烈卡位手感
+
+```c
+s_config.preset = KNOB_PRESET_NORMAL_12;  // 12 卡位（大间距）
+s_config.detent_strength = 9;              // 很大的阻力
+s_config.return_strength = 10;             // 快速归中
+```
+
+### 示例 2：平滑精细调节
+
+```c
+s_config.preset = KNOB_PRESET_DENSE_48;   // 48 卡位（小间距）
+s_config.detent_strength = 4;              // 轻微阻力
+s_config.return_strength = 5;              // 温和归中
+```
+
+### 示例 3：仅限位无卡位
+
+```c
+s_config.preset = KNOB_PRESET_SMOOTH;     // 无卡位
+// 限位配置保持默认 DUAL 模式
+```
+
+### 示例 4：运行时动态切换
+
+```c
+// 在 main.c 中随时调用
+KnobConfig_t new_cfg = {
+    .preset = KNOB_PRESET_NORMAL_12,
+    .detent_strength = 5,
+    .return_strength = 6,
+};
+App_Knob_SetConfig(&new_cfg);
+```
+
+---
+
+## API 参考
+
+### 控制层 API
+
+```c
+// 初始化（在 main.c 中调用一次）
+void App_Knob_Init(void);
+
+// 1kHz 控制循环（由 TIM3 ISR 自动调用）
+void App_Knob_Control(void);
+
+// 串口调试输出（在 main 循环中每秒调用）
+void App_Knob_Debug(void);
+
+// 运行时配置接口
+void App_Knob_SetConfig(const KnobConfig_t *cfg);
+void App_Knob_GetConfig(KnobConfig_t *cfg);
+```
+
+### 限位模块 API
+
+```c
+// 运行时修改限位配置
+void KnobLimit_SetConfig(const Knob_LimitConfig_t *cfg);
+void KnobLimit_GetConfig(Knob_LimitConfig_t *cfg);
+```
+
+**运行时修改限位示例：**
 
 ```c
 Knob_LimitConfig_t lim;
-App_Limit_GetConfig(&lim);
-lim.mode          = KNOB_LIMIT_MODE_DUAL;
-lim.limit_min_deg = -180.0f;
-lim.limit_max_deg =  180.0f;
-App_Limit_SetConfig(&lim);
+KnobLimit_GetConfig(&lim);
+lim.mode = KNOB_LIMIT_MODE_SINGLE;  // 改为单边限位
+lim.limit_max_deg = 180.0f;         // 上限 180°
+KnobLimit_SetConfig(&lim);
 ```
 
-## app_limit.c 内部参数
-
-以下参数在 `App/Src/app_limit.c` 顶部，仅在需要精细调整弹跳行为时修改：
-
-| 宏 | 默认值 | 说明 |
-|----|--------|------|
-| `LIMIT_FORCE_FLOOR` | 20 | 限位地板力 (% 占空比) |
-| `LIMIT_SETTLE_ANGLE` | 3 | 稳定判定角度 (°) |
-| `LIMIT_SETTLE_VEL` | 0.3 | 稳定判定速度 (°/ms) |
-| `LIMIT_SETTLE_MS` | 50 | 连续稳定 ms 后退出弹跳 |
-
-## 已知限制 & 可优化项
-
-| 项目 | 说明 |
-|------|------|
-| **编码器分辨率** | 2800 CPR → 每 count 0.13°，速度测量有同等级噪声。低于 ~130°/s 的慢速转动无法可靠检测方向 |
-| **齿轮箱静摩擦** | 100:1 减速箱需要 ~12-14% 占空比才能克服静摩擦，限制了最小输出力 |
-| **N20 力矩上限** | N20 电机力矩有限，较难实现 SmartKnob 原版那种"硬墙"限位手感 |
-| **归中力振荡** | 归中力太高会冲过死区来回摆，太低推不动摩擦。当前 14% 地板 + 渐变是折中方案 |
-| **无串口协议** | 参数只能通过 `#define` 重编译，或调用运行时 API。没有串口命令解析器 |
-| **无绝对零点** | 增量式编码器上电从 0 开始计数，没有绝对位置参考。如需绝对零点需外加传感器或限位开关 |
-| **限位弹跳退出条件** | 连续 50ms 在 ±3° 且速度 < 0.3°/ms 才退出。极少数情况下可能停不下来（需手动微调参数） |
+---
 
 ## 调试输出
 
-串口 115200，每秒输出一行：
+串口 115200 baud，每秒输出一行：
 
 ```
-Angle:   -45.23  Target:   -45.00  Err:  -0.23  Out:  +0.00  Det#:    -3
+Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 ```
 
 | 字段 | 含义 |
 |------|------|
-| Angle | 当前累计角度 (°) |
-| Target | 最近卡位中心角度 |
-| Err | 偏差 = Target - Angle |
-| Out | 电机输出 (% 占空比，正=正转 负=反转) |
-| Det# | 卡位编号 (限位开启时截断到边界内) |
+| **Angle** | 当前累计角度 (°) |
+| **Target** | 最近卡位中心角度 |
+| **Err** | 偏差 = Target - Angle |
+| **Out** | 电机输出占空比 (%) |
+| **Det#** | 卡位编号 |
+| **State** | 状态（0=FREE, 1=RETURNING, 2=LIMIT_BOUNCE） |
+
+---
+
+## 状态机说明
+
+旋钮有三种工作状态：
+
+| 状态 | 说明 | 转换条件 |
+|------|------|----------|
+| **FREE** | 正常转动，有卡位手感 | 默认状态 |
+| **RETURNING** | 松手后自动归中 | 连续静止 20ms → RETURNING |
+| **LIMIT_BOUNCE** | 限位边界弹跳 | 越过限位边界 → LIMIT_BOUNCE |
+
+**状态转换图：**
+
+```
+┌──────────┐  连续静止20ms   ┌────────────┐
+│   FREE   │───────────────→│ RETURNING  │
+│          │←───────────────│            │
+└─────┬────┘  进入死区/反向  └────────────┘
+      │         拧动
+      │ 越界
+      ▼
+┌──────────┐  振荡稳定
+│  LIMIT   │──────────────→ 回到 FREE
+│  BOUNCE  │
+└──────────┘
+```
+
+---
+
+## 已知限制 & 优化建议
+
+| 项目 | 说明 | 建议 |
+|------|------|------|
+| **编码器分辨率** | 2800 CPR → 每 count 0.13°，速度测量有同等级噪声 | 升级到更高分辨率编码器（如 AS5600 磁编码器） |
+| **齿轮箱静摩擦** | 100:1 减速箱需要 12-14% 占空比才能克服静摩擦 | 使用低摩擦齿轮箱或无刷电机 |
+| **N20 力矩上限** | N20 电机力矩有限，无法实现"硬墙"限位手感 | 升级到 BLDC 无刷电机 + FOC 控制 |
+| **归中力振荡** | 归中力太高会冲过死区来回摆 | 当前 14% 地板 + 渐变是折中方案，可微调 `return_strength` |
+| **无绝对零点** | 增量式编码器上电从 0 开始计数 | 添加霍尔传感器或磁编码器实现绝对位置 |
+
+---
 
 ## 与 SmartKnob 原版对比
 
-| 功能 | SmartKnob 原版 | 本项目 |
-|------|:---:|:---:|
+| 功能 | SmartKnob 原版 |   本项目 (v2.0)   |
+|------|:---:|:--------------:|
 | 虚拟卡位 | ✓ PID 弹簧 | ✓ EC11 棘轮 bump |
-| 角度限位 | ✓ | ✓ 双向弹簧 + 阻尼 |
-| 松手归中 | ✓ | ✓ 静止检测 |
-| 卡位密度可调 | ✓ | ✓ |
-| 限位范围可调 | ✓ | ✓ |
-| 240×240 LCD | ✓ | ✗ (硬件不支持) |
-| 按压检测 | ✓ | ✗ (无传感器) |
-| RGB LED 灯环 | ✓ | ✗ (无灯珠) |
-| WiFi / BLE | ✓ | ✗ (无无线模块) |
-| BLDC FOC 控制 | ✓ | ✗ (N20 直流有刷) |
-| 串口实时调参 | ✓ | 待实现 |
-| 手感预设切换 | — | 待实现 |
+| 角度限位 | ✓ |  ✓ 双向弹簧 + 阻尼   |
+| 松手归中 | ✓ |     ✓ 静止检测     |
+| 卡位密度可调 | ✓ |  ✓ 预设方案 (5 种)  |
+| 限位范围可调 | ✓ |   ✓ 运行时 API    |
+| 蜂鸣反馈 | ✗ | ✓ 卡位切换 + 限位撞击  |
+| 配置简化 | — | ✓ 3 参数替代 22 宏  |
+| 模块化架构 | — | ✓ 分层设计 + 事件驱动  |
+| 240×240 LCD | ✓ |     ✗ (暂无)     |
+| 按压检测 | ✓ |    ✗ (无传感器)    |
+| RGB LED 灯环 | ✓ |    ✗ (无灯珠)     |
+| WiFi / BLE | ✓ |   ✗ (无无线模块)    |
+| BLDC FOC 控制 | ✓ |  ✗ (N20 直流有刷)  |
 
-## 构建
+---
 
-```bash
-cmake --build build/Debug
-```
+## 更新日志
 
-使用 STM32CubeMX 生成的项目框架 + CMake 构建系统。
+### v2.0.0 (2026-08-02)
+- 重大架构重构：完全重写 App 层
+- 简化配置系统：3 参数替代 22 宏（-86%）
+- 模块化设计：分层架构，职责单一
+- 显式状态机：清晰的状态转换逻辑
+- 事件驱动：限位模块解耦
+- 智能蜂鸣：
+  - 限位激活时卡位检测和 Det# 同步冻结（避免超出边界误触发）
+  - 边界振荡 100ms 去抖（防止连续响）
+
+### v1.1.0 (2026-07-31)
+- 增加限位点蜂鸣器音效
+- 优化手感参数
+- 代码分层和去冗余
+
+### v1.0.0 (2026-07-30)
+- 初始版本
+- 实现基本卡位和限位功能
