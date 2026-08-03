@@ -80,6 +80,47 @@
 | PWMB | 空置不接 |
 | GND | 接系统共地 |
 
+### USB 通讯（micro-USB 口）接线与标准初始流程
+
+| micro-USB 信号 | 接到哪里 | 说明 |
+|---|---|---|
+| D- | STM32 **PA11** (USB_DM) | 板上自带 1.5k 上拉 |
+| D+ | STM32 **PA12** (USB_DP) | 板上自带 1.5k 上拉 |
+| VBUS (5V) | 板载 LDO → **3.3V** | 仅供 MCU，电机 **6V 独立供电** |
+| GND | 接系统共地 | |
+
+**标准流程：** CubeMX 使能 USB-FS Device + CDC 中间件后，在生成代码的
+`USB_DEVICE/App/usbd_cdc_if.c` 中加一行转发，业务逻辑放 App 层：
+
+`usbd_cdc_if.c` 的 `CDC_Receive_FS`：
+```c
+static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
+{
+  /* USER CODE BEGIN 6 */
+    Usb_OnReceive(Buf, *Len);  // USB 收包入口，在此转发调用。USB 收包是事件回调，主循环收不到
+  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
+  USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+  return (USBD_OK);
+  /* USER CODE END 6 */
+}
+```
+
+`App/Src/app_usb.c`：
+```c
+#include "app_usb.h"
+#include "usbd_cdc_if.h"
+
+void Usb_OnReceive(uint8_t *buf, uint32_t len)
+{
+    CDC_Transmit_FS(buf, len);
+}
+```
+
+> USB 收包是中断/事件驱动的，必须经过 `CDC_Receive_FS` 回调，主循环无法轮询。
+> 业务逻辑不放生成文件，只在 USER CODE 区留一行转发，处理都放 App 层。
+> echo 是双向收发验证：收到什么回显什么。后续协议解析也在此实现。
+
+
 ### STM32 外设分配与配置
 
 | 外设 | 功能 | 关键配置 |
@@ -91,6 +132,7 @@
 | PB9 | TB6612 STBY 使能 | GPIO Output, **必须拉高使能** |
 | PB0 | 有源蜂鸣器 | GPIO Output, 低电平触发 |
 | USART1 | 调试串口 | 115200, 8N1, TX=PA9, RX=PA10(可不接) |
+| USB | USB-FS Device (CDC 虚拟串口) | CDC (VCP), 48MHz = PLLCLK/1.5, PA11=USB_DM, PA12=USB_DP |
 
 ---
 
@@ -349,7 +391,21 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 
 ---
 
+## 功能路线图（开发中）
+
+| 阶段   | 内容 | 状态 |
+|------|------|------|
+| 初始工程 | USB-CDC 通讯（CubeMX 配置 + 电脑识别 COM 口） | 已完成 |
+| 基础通信 | 双向通信协议（帧头 + 长度 + 校验 + 握手） | 待做 |
+| 旋钮控制 | 旋钮伺服跟随（闭环位置环 + 人手接管检测） | 待做 |
+| 最终交互 | C# 上位机（CoreAudio 音量 / WMI 亮度 / 媒体键 + 状态回读） | 待做 |
+
+---
+
 ## 更新日志
+
+### v3.1.0 (2026-08-03)
+- 新增 USB-CDC 虚拟串口通讯（硬件接线 + CubeMX 配置 + echo 收发验证通过）
 
 ### v3.0.0 (2026-08-03)
 - 精简架构：13 文件 → 6 文件
