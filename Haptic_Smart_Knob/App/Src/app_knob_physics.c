@@ -52,8 +52,6 @@ static const PresetParams_t s_preset_table[] =
 
 // ===== 模块内部状态（只在 Init 时写入，运行时只读） =====
 static PresetParams_t s_params;             ///< 当前预设参数
-static float s_detent_strength_mult;        ///< 卡位力度乘数 (0.1 ~ 1.0)
-static float s_return_strength_mult;        ///< 归中力度乘数 (0.1 ~ 1.0)
 static float s_bump_max_pct;                ///< 实际爬坡力 = base × mult
 static float s_return_force_pct;            ///< 实际归中力 = base × mult
 static float s_return_force_floor;          ///< 归中力地板（确保能推动齿轮箱）
@@ -73,13 +71,13 @@ void KnobPhysics_Init(KnobPreset_t preset,
     // 加载预设参数
     s_params = s_preset_table[preset];
 
-    // 计算力度乘数 (1-10 映射到 0.1-1.0)
-    s_detent_strength_mult = (float)detent_strength / 10.0f;
-    s_return_strength_mult = (float)return_strength / 10.0f;
+    // 计算力度乘数 (1-10 映射到 0.1-1.0)，仅 Init 期间使用
+    float detent_mult = (float)detent_strength / 10.0f;
+    float return_mult = (float)return_strength / 10.0f;
 
     // 计算实际力参数
-    s_bump_max_pct = s_params.bump_max_base * s_detent_strength_mult;
-    s_return_force_pct = s_params.return_force_base * s_return_strength_mult;
+    s_bump_max_pct = s_params.bump_max_base * detent_mult;
+    s_return_force_pct = s_params.return_force_base * return_mult;
 
     // 归中力地板 = 基础值的 70%，确保能推动齿轮箱
     s_return_force_floor = s_params.return_force_base * 0.7f;

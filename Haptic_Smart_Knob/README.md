@@ -94,32 +94,32 @@
 
 ---
 
-## 软件架构（v2.0 新架构）
+## 软件架构 v3.0
 
 ### 分层设计
 
 ```
-┌────────────────────────────────────────────────┐
-│  app_knob_ctrl.c (控制协调层)                   │
-│  - 1kHz 控制循环入口                            │
-│  - 读取传感器，调度状态机                       │
-│  - 协调卡位/限位/蜂鸣器                         │
-└────────────┬───────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│  app_knob.c (应用层入口)                 │
+│  - 1kHz 控制循环 + 状态机 + ISR          │
+│  - 蜂鸣器事件 + 卡位检测                 │
+│  - 协调 physics / limit 子模块           │
+└────────────┬─────────────────────────────┘
              │
-  ┌──────────┼──────────┬─────────────┐
-  │          │          │             │
-┌─▼──────┐ ┌─▼──────┐ ┌─▼──────┐ ┌───▼────┐
-│physics │ │ state  │ │ limit  │ │ event  │
-│卡位物理│ │ 状态机  │ │ 限位   │ │ 事件   │
-│模型    │ │        │ │ 模块   │ │ 层     │
-└────────┘ └────────┘ └────────┘ └────────┘
-     │          │          │          │
-     └──────────┴──────────┴──────────┘
-                │
-        ┌───────▼────────┐
-        │  BSP 层        │
-        │  硬件抽象层     │
-        └────────────────┘
+     ┌───────┼───────┐
+     │               │
+┌────▼─────┐   ┌─────▼────┐
+│ physics  │   │  limit   │
+│ 卡位物理 │   │  限位    │
+│ 纯计算   │   │  模块    │
+└──────────┘   └──────────┘
+     │               │
+     └───────┬───────┘
+             │
+     ┌───────▼────────┐
+     │  BSP 层        │
+     │  硬件抽象层    │
+     └────────────────┘
 ```
 
 ### 文件结构
@@ -127,37 +127,27 @@
 ```
 App/
 ├── Inc/
-│   ├── app_knob_types.h       # 公共类型定义（配置、状态、数据结构）
-│   ├── app_knob_physics.h     # 卡位物理模型接口（纯函数）
-│   ├── app_knob_state.h       # 状态机接口（显式状态转换）
-│   ├── app_knob_limit.h       # 限位模块接口（事件驱动）
-│   ├── app_knob_event.h       # 事件通知层（蜂鸣器管理）
-│   ├── app_knob_ctrl.h        # 控制协调层（顶层入口）
-│   └── app_isr.h              # HAL 回调入口
+│   ├── app_knob.h              # 类型定义 + 对外 API
+│   ├── app_knob_physics.h      # 卡位物理模型接口（纯函数）
+│   └── app_knob_limit.h        # 限位模块接口
 └── Src/
-    ├── app_knob_physics.c     # 预设参数 + 力计算
-    ├── app_knob_state.c       # 状态机实现（FREE/RETURNING/LIMIT_BOUNCE）
-    ├── app_knob_limit.c       # 双向弹簧 + 阻尼
-    ├── app_knob_event.c       # 卡位检测 + 蜂鸣触发
-    ├── app_knob_ctrl.c        # 主控制循环
-    └── app_isr.c              # TIM3 1kHz → App_Knob_Control
+    ├── app_knob.c              # 控制循环 + 状态机 + ISR + 蜂鸣器事件
+    ├── app_knob_physics.c      # 预设参数 + 力计算
+    └── app_knob_limit.c        # 双向弹簧 + 阻尼
 
 Drivers/BSP/
-├── Knob_Motor/                # N20 + TB6612 电机驱动
-├── Knob_Encoder/              # TIM2 编码器读取 + 角度换算
-└── Knob_Buzzer/               # 有源蜂鸣器驱动（脉冲管理）
+├── Knob_Motor/                 # N20 + TB6612 电机驱动
+├── Knob_Encoder/               # TIM2 编码器读取 + 角度换算
+└── Knob_Buzzer/                # 有源蜂鸣器驱动（脉冲管理）
 ```
 
 ### 模块职责
 
 | 模块 | 职责 |
 |------|------|
+| **app_knob** | 控制循环、状态机、ISR 回调、蜂鸣器事件、配置管理 |
 | **physics** | 查找卡位、计算力输出（无状态纯函数） |
-| **state** | 管理 FREE/RETURNING/LIMIT_BOUNCE 三种状态 |
-| **limit** | 限位检测、弹簧力计算、事件回调 |
-| **event** | 卡位切换检测、蜂鸣器触发 |
-| **ctrl** | 协调所有模块、主控制循环 |
-| **isr** | HAL 弱符号覆盖 |
+| **limit** | 限位检测、弹簧力计算、振荡稳定检测 |
 
 ---
 
@@ -165,13 +155,13 @@ Drivers/BSP/
 
 ### 1. 修改配置
 
-打开 `App/Src/app_knob_ctrl.c`，找到第 49-52 行：
+打开 `App/Src/app_knob.c`，找到第 71-73 行：
 
 ```c
 void App_Knob_Init(void)
 {
-    // 默认配置：48 卡位，中等力度
-    s_config.preset = KNOB_PRESET_DENSE_48;  // ← 改这里
+    // 默认配置：24 卡位，中等力度
+    s_config.preset = KNOB_PRESET_FINE_24;   // ← 改这里
     s_config.detent_strength = 7;             // ← 改这里 (1-10)
     s_config.return_strength = 8;             // ← 改这里 (1-10)
 ```
@@ -245,7 +235,7 @@ App_Knob_SetConfig(&new_cfg);
 
 ## API 参考
 
-### 控制层 API
+### 应用层 API（app_knob.h）
 
 ```c
 // 初始化（在 main.c 中调用一次）
@@ -274,10 +264,10 @@ void KnobLimit_GetConfig(Knob_LimitConfig_t *cfg);
 
 ```c
 Knob_LimitConfig_t lim;
-KnobLimit_GetConfig(&lim);
+KnobLimit_GetConfig(&lim);          // 获取本地副本
 lim.mode = KNOB_LIMIT_MODE_SINGLE;  // 改为单边限位
 lim.limit_max_deg = 180.0f;         // 上限 180°
-KnobLimit_SetConfig(&lim);
+KnobLimit_SetConfig(&lim);          // 提交修改
 ```
 
 ---
@@ -343,7 +333,7 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 
 ## 与 SmartKnob 原版对比
 
-| 功能 | SmartKnob 原版 |   本项目 (v2.0)   |
+| 功能 | SmartKnob 原版 |   本项目 (v3.0)   |
 |------|:---:|:--------------:|
 | 虚拟卡位 | ✓ PID 弹簧 | ✓ EC11 棘轮 bump |
 | 角度限位 | ✓ |  ✓ 双向弹簧 + 阻尼   |
@@ -351,8 +341,6 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 | 卡位密度可调 | ✓ |  ✓ 预设方案 (5 种)  |
 | 限位范围可调 | ✓ |   ✓ 运行时 API    |
 | 蜂鸣反馈 | ✗ | ✓ 卡位切换 + 限位撞击  |
-| 配置简化 | — | ✓ 3 参数替代 22 宏  |
-| 模块化架构 | — | ✓ 分层设计 + 事件驱动  |
 | 240×240 LCD | ✓ |     ✗ (暂无)     |
 | 按压检测 | ✓ |    ✗ (无传感器)    |
 | RGB LED 灯环 | ✓ |    ✗ (无灯珠)     |
@@ -363,15 +351,20 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 
 ## 更新日志
 
+### v3.0.0 (2026-08-03)
+- 精简架构：13 文件 → 6 文件
+- 合并 ctrl/state/event/isr/types 为单一 app_knob 模块
+- 删除回调模式：limit 模块直接调用，减少间接层
+- 删除未使用的枚举和类型（KnobEventType_t、LimitEventCallback_t）
+- 对外 API 和运行时配置接口不变
+
 ### v2.0.0 (2026-08-02)
 - 重大架构重构：完全重写 App 层
-- 简化配置系统：3 参数替代 22 宏（-86%）
+- 简化配置系统：3 参数替代 22 宏
 - 模块化设计：分层架构，职责单一
 - 显式状态机：清晰的状态转换逻辑
 - 事件驱动：限位模块解耦
-- 智能蜂鸣：
-  - 限位激活时卡位检测和 Det# 同步冻结（避免超出边界误触发）
-  - 边界振荡 100ms 去抖（防止连续响）
+- 智能蜂鸣：限位激活时卡位检测和 Det# 同步冻结，边界振荡 100ms 去抖
 
 ### v1.1.0 (2026-07-31)
 - 增加限位点蜂鸣器音效

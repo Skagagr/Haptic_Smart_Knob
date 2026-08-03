@@ -9,7 +9,7 @@
 #ifndef APP_KNOB_PHYSICS_H
 #define APP_KNOB_PHYSICS_H
 
-#include "app_knob_types.h"
+#include "app_knob.h"
 
 /**
  * @brief 初始化物理模型参数（根据预设计算）

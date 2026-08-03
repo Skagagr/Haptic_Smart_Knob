@@ -1,9 +1,11 @@
 /**
  * @file    app_knob_limit.c
- * @brief   角度限位实现 — 事件驱动
- * @details 双向弹簧 + 阻尼，通过回调通知状态机
- * @version 2.0.0
- * @date    2026/8/2
+ * @brief   角度限位实现 — 双向弹簧 + 阻尼，振荡稳定检测
+ * @details 检测到越界后进入弹跳模式，通过弹簧力将旋钮推回边界内。
+ *          振荡稳定后自动退出弹跳，恢复正常工作模式。
+ *          限位优先级高于卡位力反馈。
+ * @version 3.0.0
+ * @date    2026/8/3
  */
 #include "app_knob_limit.h"
 #include "bsp_knob_motor.h"
@@ -15,17 +17,14 @@
 #define LIMIT_SETTLE_MS     50     ///< 连续稳定 ms 后退出弹跳
 #define LIMIT_DEBOUNCE_MS   100    ///< 蜂鸣器去抖时间 (ms)，防止边界振荡时重复触发
 
-// ===== 模块内部状态（只在 Init / SetConfig 时写入，运行时由 Update 修改） =====
+// ===== 模块内部状态 =====
 static Knob_LimitConfig_t s_cfg;            ///< 当前限位配置
 static int s_bounce_active;                 ///< 1 = 弹跳模式激活中
 static float s_bounce_target;               ///< 弹簧锚点角度（限位边界值）
 static int s_settle_count;                  ///< 连续稳定计数器
 static int s_debounce_count;                ///< 蜂鸣器去抖计数器（防止重复触发）
-static LimitEventCallback_t s_on_enter;     ///< 进入限位回调
-static LimitEventCallback_t s_on_exit;      ///< 退出限位回调
 
-void KnobLimit_Init(LimitEventCallback_t on_enter,
-                    LimitEventCallback_t on_exit)
+void KnobLimit_Init(void)
 {
     s_cfg.mode = KNOB_LIMIT_DEFAULT_MODE;
     s_cfg.limit_min_deg = KNOB_LIMIT_DEFAULT_MIN;
@@ -36,9 +35,7 @@ void KnobLimit_Init(LimitEventCallback_t on_enter,
 
     s_bounce_active = 0;
     s_settle_count = 0;
-    s_debounce_count = 0;  // 初始化去抖计数器
-    s_on_enter = on_enter;
-    s_on_exit = on_exit;
+    s_debounce_count = 0;
 }
 
 void KnobLimit_SetConfig(const Knob_LimitConfig_t *cfg)
@@ -71,7 +68,7 @@ void KnobLimit_Update(const KnobSensorData_t *sensor,
         {
             s_bounce_active = 0;
             s_debounce_count = 0;
-            if (s_on_exit) s_on_exit();
+            AppKnob_OnLimitExit();
         }
         return;
     }
@@ -89,11 +86,10 @@ void KnobLimit_Update(const KnobSensorData_t *sensor,
             s_bounce_active = 1;
             s_bounce_target = s_cfg.limit_max_deg;
             s_settle_count = 0;
-            // 只有去抖计数器归零时才触发蜂鸣（防止边界振荡时重复触发）
             if (s_debounce_count == 0)
             {
-                if (s_on_enter) s_on_enter();
-                s_debounce_count = LIMIT_DEBOUNCE_MS;  // 启动去抖计时
+                AppKnob_OnLimitEnter();
+                s_debounce_count = LIMIT_DEBOUNCE_MS;
             }
         }
         else if (check_lower && sensor->angle < s_cfg.limit_min_deg)
@@ -101,11 +97,10 @@ void KnobLimit_Update(const KnobSensorData_t *sensor,
             s_bounce_active = 1;
             s_bounce_target = s_cfg.limit_min_deg;
             s_settle_count = 0;
-            // 只有去抖计数器归零时才触发蜂鸣
             if (s_debounce_count == 0)
             {
-                if (s_on_enter) s_on_enter();
-                s_debounce_count = LIMIT_DEBOUNCE_MS;  // 启动去抖计时
+                AppKnob_OnLimitEnter();
+                s_debounce_count = LIMIT_DEBOUNCE_MS;
             }
         }
     }
@@ -151,7 +146,7 @@ void KnobLimit_Update(const KnobSensorData_t *sensor,
         {
             s_bounce_active = 0;
             s_settle_count = 0;
-            if (s_on_exit) s_on_exit();
+            AppKnob_OnLimitExit();
         }
     }
     else

@@ -1,15 +1,17 @@
 /**
  * @file    app_knob_limit.h
- * @brief   角度限位 — 事件驱动，独立状态机
- * @details 双向弹簧 + 阻尼，通过回调通知状态切换
- * @version 2.0.0
- * @date    2026/8/2
+ * @brief   角度限位 — 双向弹簧 + 阻尼，越界时推回边界内
+ * @details 独立于主控制循环的限位保护模块。
+ *          支持三种模式：关闭 / 单边 / 双边。
+ *          检测到越界时直接调用 AppKnob_OnLimitEnter/Exit 通知主模块。
+ * @version 3.0.0
+ * @date    2026/8/3
  */
 #ifndef APP_KNOB_LIMIT_H
 #define APP_KNOB_LIMIT_H
 
 #include <stdint.h>
-#include "app_knob_types.h"
+#include "app_knob.h"
 
 // ===== 限位默认值 =====
 #define KNOB_LIMIT_DEFAULT_MODE    KNOB_LIMIT_MODE_DUAL
@@ -24,9 +26,9 @@
  */
 typedef enum
 {
-    KNOB_LIMIT_MODE_OFF = 0,
-    KNOB_LIMIT_MODE_SINGLE,
-    KNOB_LIMIT_MODE_DUAL,
+    KNOB_LIMIT_MODE_OFF = 0,    ///< 关闭限位
+    KNOB_LIMIT_MODE_SINGLE,     ///< 单边限位（仅上限）
+    KNOB_LIMIT_MODE_DUAL,       ///< 双边限位（上下限均有效）
 } Knob_LimitMode_t;
 
 /**
@@ -34,29 +36,25 @@ typedef enum
  */
 typedef struct
 {
-    Knob_LimitMode_t mode;
-    float   limit_min_deg;
-    float   limit_max_deg;
-    float   spring_kp;
-    float   spring_kd;
-    uint8_t max_force_pct;
+    Knob_LimitMode_t mode;          ///< 限位模式
+    float   limit_min_deg;          ///< 下限角度 (°)
+    float   limit_max_deg;          ///< 上限角度 (°)
+    float   spring_kp;              ///< 弹簧刚度系数
+    float   spring_kd;              ///< 阻尼系数
+    uint8_t max_force_pct;          ///< 最大力百分比 (0-100)
 } Knob_LimitConfig_t;
 
 /**
- * @brief 事件回调类型
+ * @brief 初始化限位模块
+ * @details 加载默认配置，复位内部状态。
+ *          在主控制循环初始化时调用一次。
  */
-typedef void (*LimitEventCallback_t)(void);
-
-/**
- * @brief 初始化限位模块（注册回调）
- * @param on_enter 进入限位弹跳时的回调
- * @param on_exit 退出限位弹跳时的回调
- */
-void KnobLimit_Init(LimitEventCallback_t on_enter,
-                    LimitEventCallback_t on_exit);
+void KnobLimit_Init(void);
 
 /**
  * @brief 检查并更新限位状态（每 tick 调用）
+ * @details 检测越界 → 进入弹跳 → 弹簧推回 → 稳定后退出。
+ *          进入/退出时直接调用 AppKnob_OnLimitEnter/Exit 通知主模块。
  * @param sensor 传感器数据
  * @param output 输出力指令（限位激活时填充）
  */

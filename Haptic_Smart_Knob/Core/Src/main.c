@@ -27,7 +27,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
-#include "app_knob_ctrl.h"
+#include "app_knob.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
