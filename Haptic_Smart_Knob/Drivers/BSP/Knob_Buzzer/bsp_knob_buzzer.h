@@ -20,7 +20,7 @@
 void BSP_KnobBuzzer_Init(void);
 
 /**
- * @brief 触发一次短促蜂鸣 (~15ms)
+ * @brief 触发一次短促蜂鸣 (5ms) + 50ms 冷却防连响
  */
 void BSP_KnobBuzzer_Click(void);
 
