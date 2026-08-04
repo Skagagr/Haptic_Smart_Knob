@@ -13,7 +13,7 @@
 #include <stdint.h>
 #include "app_knob.h"
 
-// ===== 限位默认值 =====
+// ================================ 限位默认值  ================================
 #define KNOB_LIMIT_DEFAULT_MODE    KNOB_LIMIT_MODE_DUAL
 #define KNOB_LIMIT_DEFAULT_MIN     -180.0f
 #define KNOB_LIMIT_DEFAULT_MAX     360.0f

@@ -73,7 +73,7 @@ typedef enum
     KNOB_STATE_LIMIT_BOUNCE,    ///< 限位弹跳（边界弹簧反馈）
 } KnobState_t;
 
-// ===== 对外 API =====
+// ================================= 对外 API  =================================
 
 void App_Knob_Init(void);
 void App_Knob_Control(void);
@@ -95,7 +95,7 @@ void AppKnob_OnLimitEnter(void);
  */
 void AppKnob_OnLimitExit(void);
 
-// ===== 调试用全局变量 =====
+// ============================== 调试用全局变量  ==============================
 extern volatile int32_t raw_count;
 extern volatile float   angle;
 

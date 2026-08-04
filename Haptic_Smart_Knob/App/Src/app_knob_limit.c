@@ -10,14 +10,14 @@
 #include "app_knob_limit.h"
 #include "bsp_knob_motor.h"
 
-// ===== 可调参数 =====
+// ================================= 可调参数  =================================
 #define LIMIT_FORCE_FLOOR   20.0f  ///< 限位地板力（确保能推动齿轮箱）
 #define LIMIT_SETTLE_ANGLE  3.0f   ///< 稳定判定角度 (°)
 #define LIMIT_SETTLE_VEL    0.3f   ///< 稳定判定速度 (°/ms)
 #define LIMIT_SETTLE_MS     50     ///< 连续稳定 ms 后退出弹跳
 #define LIMIT_DEBOUNCE_MS   100    ///< 蜂鸣器去抖时间 (ms)，防止边界振荡时重复触发
 
-// ===== 模块内部状态 =====
+// =============================== 模块内部状态  ===============================
 static Knob_LimitConfig_t s_cfg;            ///< 当前限位配置
 static int s_bounce_active;                 ///< 1 = 弹跳模式激活中
 static float s_bounce_target;               ///< 弹簧锚点角度（限位边界值）

@@ -26,12 +26,12 @@ extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim4;
 
-// ===== 状态转换阈值 =====
+// =============================== 状态转换阈值  ===============================
 #define STILL_THRESHOLD         0.18f  ///< 静止判定阈值 (°/ms)，须大于编码器噪声
 #define STILL_COUNT_NEEDED      20     ///< 松手判定延迟 (ms)，连续静止此时长后切换到归中
 #define REGRAB_VEL              0.05f  ///< 反向拧动检测阈值 (°/ms)，用于退出归中状态
 
-// ===== 模块内部状态 =====
+// =============================== 模块内部状态  ===============================
 static KnobConfig_t     s_config;           ///< 当前旋钮配置
 static float            s_last_angle;       ///< 上一 tick 角度，用于计算速度
 static KnobSensorData_t s_current_sensor;   ///< 当前传感器数据
@@ -45,16 +45,16 @@ static int              s_still_count;      ///< 连续静止计数器（用于�
 // 事件检测
 static int              s_last_detent;      ///< 上次卡位编号，用于检测切换
 
-// ===== 调试用全局变量 =====
+// ============================== 调试用全局变量  ==============================
 volatile int32_t raw_count;
 volatile float   angle;
 
-// ===== 私有函数声明 =====
+// =============================== 私有函数声明  ===============================
 static void HandleFreeState(const KnobSensorData_t *sensor, KnobForceOutput_t *output);
 static void HandleReturningState(const KnobSensorData_t *sensor, KnobForceOutput_t *output);
 static void HandleLimitBounceState(const KnobSensorData_t *sensor, KnobForceOutput_t *output);
 
-// ===== 对外函数 =====
+// ================================= 对外函数  =================================
 
 /**
  * @brief 初始化旋钮系统
@@ -205,7 +205,7 @@ void App_Knob_GetConfig(KnobConfig_t *cfg)
     *cfg = s_config;
 }
 
-// ===== 限位回调（供 limit.c 调用） =====
+// ======================== 限位回调（供 limit.c 调用） ========================
 
 /**
  * @brief 进入限位弹跳 — 触发蜂鸣并切换状态机
@@ -226,7 +226,7 @@ void AppKnob_OnLimitExit(void)
     s_still_count = 0;
 }
 
-// ===== 状态处理函数 =====
+// =============================== 状态处理函数  ===============================
 
 /**
  * @brief 自由模式 — 正常转动时有卡位爬坡阻力
@@ -329,7 +329,7 @@ static void HandleLimitBounceState(const KnobSensorData_t *sensor, KnobForceOutp
     output->duty_pct = 0;
 }
 
-// ===== ISR 回调 =====
+// ================================= ISR 回调  =================================
 
 /**
  * @brief HAL TIM 周期中断回调

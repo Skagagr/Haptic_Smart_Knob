@@ -8,7 +8,7 @@
  */
 #include "app_knob_physics.h"
 
-// ===== 速度阈值（与原版保持一致） =====
+// ======================== 速度阈值（与原版保持一致）  ========================
 #define VEL_THRESHOLD       0.25f  ///< 转动判定阈值 (°/ms)
 #define REGRAB_VEL          0.05f  ///< 反向拧动检测阈值 (°/ms)
 
@@ -50,7 +50,7 @@ static const PresetParams_t s_preset_table[] =
     {0,  0.0f,  0.0f,  0.0f, 0.0f,  0.0f,  0.0f},
 };
 
-// ===== 模块内部状态（只在 Init 时写入，运行时只读） =====
+// =============== 模块内部状态（只在 Init 时写入，运行时只读）  ===============
 static PresetParams_t s_params;             ///< 当前预设参数
 static float s_bump_max_pct;                ///< 实际爬坡力 = base × mult
 static float s_return_force_pct;            ///< 实际归中力 = base × mult
