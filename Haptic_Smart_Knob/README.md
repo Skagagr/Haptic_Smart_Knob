@@ -29,6 +29,12 @@
   - 可在 `App/Src/app_knob_limit.c` 中修改 `LIMIT_DEBOUNCE_MS` 调整去抖时间
 - **低延迟响应**：传感器读取 → 状态机 → 力输出 < 1ms
 
+### USB 双向通信协议
+- **帧格式**：`[0xAA][0x55][Type][Len][Payload][CRC8]`，双字节同步头 + 1 字节长度 + CRC8 校验
+- **命令-应答模式**：PC 主导，MCU 应答，带状态码
+- **查询角度**：PC 发 `GET_ANGLE` 命令，MCU 回传当前角度（float，小端）
+- **设置预设**：PC 发 `SET_CONFIG` 命令，运行中切换 5 种卡位预设
+
 ---
 
 ## 硬件
@@ -105,20 +111,69 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 }
 ```
 
-`App/Src/app_usb.c`：
+`App/Src/app_usb.c`（传输层桥，转发给协议层）：
 ```c
 #include "app_usb.h"
-#include "usbd_cdc_if.h"
+#include "app_usb_protocol.h"
 
 void Usb_OnReceive(uint8_t *buf, uint32_t len)
 {
-    CDC_Transmit_FS(buf, len);
+    UsbProto_HandleRx(buf, len);
 }
 ```
 
 > USB 收包是中断/事件驱动的，必须经过 `CDC_Receive_FS` 回调，主循环无法轮询。
 > 业务逻辑不放生成文件，只在 USER CODE 区留一行转发，处理都放 App 层。
-> echo 是双向收发验证：收到什么回显什么。后续协议解析也在此实现。
+> 收到字节后交由 `app_usb_protocol` 协议层做帧解析与命令分发。
+
+### USB 双向通信协议（帧头 + 长度 + 校验）
+
+帧格式（定义在 `App/Inc/app_usb_protocol.h`）：
+
+```
+[0xAA][0x55][Type][Len][Payload 0~255B][CRC8]
+```
+
+- **同步头**：`0xAA 0x55` 双字节，互反码抗干扰
+- **Len**：载荷字节数 (0~255)，一帧总长 = 4 + Len（2 同步头 + 1 类型 + 1 长度 + Len 载荷 + 1 CRC）
+- **CRC8**：多项式 0x07，覆盖 Type+Len+Payload（不含同步头）
+- **响应类型** = 命令类型 | 0x80，响应载荷首字节为状态码
+- **字节序**：小端（STM32 与 x86 PC 均为小端）
+
+**已实现命令（PC → MCU）：**
+
+| 命令 | 类型 | 载荷 | 说明 |
+|------|------|------|------|
+| `SET_CONFIG` | 0x02 | 1B = preset (0~4) | 设置预设，调用 `App_Knob_SetConfig` |
+| `GET_ANGLE` | 0x03 | 空 | 查询当前角度，返回 4B float（小端） |
+
+**状态码（响应载荷首字节）：**
+
+| 状态码 | 值 | 含义 |
+|--------|----|------|
+| `OK` | 0x00 | 成功 |
+| `ERR_LEN` | 0x01 | 长度字段不匹配 |
+| `ERR_PARAM` | 0x02 | 参数非法（preset 越界） |
+| `ERR_UNKNOWN` | 0x03 | 未知命令 |
+
+**PC 端测试帧（十六进制）：**
+
+```
+查询角度:  AA 55 03 00 3F
+          → 回 AA 55 83 05 00 <角度4B> <CRC>   // 00=OK, 后 4 字节小端 float
+
+设置预设:  AA 55 02 01 03 CA                   // DENSE_48 (3)
+          → 回 AA 55 82 01 00 <CRC>           // ACK
+```
+
+**新增一条命令**只需改 3 处（以 `CMD_GET_STATE = 0x04` 为例）：
+1. `app_usb_protocol.h` 枚举加 `USB_PROTO_CMD_GET_STATE = 0x04`
+2. `app_usb_protocol.c` 的 `UsbProto_Dispatch()` 加分发分支
+3. 实现处理函数（参照 `UsbProto_HandleGetAngle`，响应载荷首字节放状态码）
+   CRC 可交给 `UsbProto_SendFrame` 自动计算，无需手算。
+
+> 发送为异步：`CDC_Transmit_FS` 只是把缓冲指针交给 USB 端点，帧缓冲须常驻，
+> 发送忙时（返回 `USBD_BUSY`）当前帧会被丢弃（PC 端轮询慢时不会触发）。
 
 
 ### STM32 外设分配与配置
@@ -136,7 +191,7 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 
 ---
 
-## 软件架构 v3.0
+## 软件架构 v3.2
 
 ### 分层设计
 
@@ -171,16 +226,23 @@ App/
 ├── Inc/
 │   ├── app_knob.h              # 类型定义 + 对外 API
 │   ├── app_knob_physics.h      # 卡位物理模型接口（纯函数）
-│   └── app_knob_limit.h        # 限位模块接口
+│   ├── app_knob_limit.h        # 限位模块接口
+│   ├── app_usb.h               # USB 收包转发入口
+│   └── app_usb_protocol.h      # USB 协议定义（帧格式/命令/状态码）
 └── Src/
     ├── app_knob.c              # 控制循环 + 状态机 + ISR + 蜂鸣器事件
     ├── app_knob_physics.c      # 预设参数 + 力计算
-    └── app_knob_limit.c        # 双向弹簧 + 阻尼
+    ├── app_knob_limit.c        # 双向弹簧 + 阻尼
+    ├── app_usb.c               # USB 传输层 → 协议层桥
+    └── app_usb_protocol.c      # 帧解析状态机 + CRC8 + 命令分发
 
 Drivers/BSP/
 ├── Knob_Motor/                 # N20 + TB6612 电机驱动
 ├── Knob_Encoder/               # TIM2 编码器读取 + 角度换算
 └── Knob_Buzzer/                # 有源蜂鸣器驱动（脉冲管理）
+
+USB_DEVICE/App/                 # CubeMX 生成（一般不修改）
+└── usbd_cdc_if.c               # USB 收发回调，USER CODE 区转发到 App
 ```
 
 ### 模块职责
@@ -190,6 +252,21 @@ Drivers/BSP/
 | **app_knob** | 控制循环、状态机、ISR 回调、蜂鸣器事件、配置管理 |
 | **physics** | 查找卡位、计算力输出（无状态纯函数） |
 | **limit** | 限位检测、弹簧力计算、振荡稳定检测 |
+| **app_usb** | USB 收包转发（传输层 → 协议层桥） |
+| **app_usb_protocol** | 帧解析状态机、CRC8 校验、命令分发、响应组帧 |
+
+**USB 收包数据流（中断上下文）：**
+
+```
+USB OUT 中断
+  └→ usbd_cdc_if.c: CDC_Receive_FS
+       └→ app_usb.c: Usb_OnReceive(buf, len)
+            └→ app_usb_protocol.c: UsbProto_HandleRx
+                 └→ 解析状态机（跨 USB 包重组）→ CRC8 校验 → 命令分发
+                      ├→ SET_CONFIG → App_Knob_SetConfig()
+                      └→ GET_ANGLE  → BSP_KnobEncoder_GetAngle()
+                  响应帧 → UsbProto_SendFrame() → CDC_Transmit_FS()
+```
 
 ---
 
@@ -375,7 +452,7 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 
 ## 与 SmartKnob 原版对比
 
-| 功能 | SmartKnob 原版 |   本项目 (v3.0)   |
+| 功能 | SmartKnob 原版 |   本项目 (v3.2)   |
 |------|:---:|:--------------:|
 | 虚拟卡位 | ✓ PID 弹簧 | ✓ EC11 棘轮 bump |
 | 角度限位 | ✓ |  ✓ 双向弹簧 + 阻尼   |
@@ -396,13 +473,21 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 | 阶段   | 内容 | 状态 |
 |------|------|------|
 | 初始工程 | USB-CDC 通讯（CubeMX 配置 + 电脑识别 COM 口） | 已完成 |
-| 基础通信 | 双向通信协议（帧头 + 长度 + 校验 + 握手） | 待做 |
+| 基础通信 | 双向通信协议（帧头 + 长度 + 校验 + 查询/设置命令） | 已完成 |
 | 旋钮控制 | 旋钮伺服跟随（闭环位置环 + 人手接管检测） | 待做 |
 | 最终交互 | C# 上位机（CoreAudio 音量 / WMI 亮度 / 媒体键 + 状态回读） | 待做 |
 
 ---
 
 ## 更新日志
+
+### v3.2.0 (2026-08-04)
+- 新增 USB 双向通信协议（`app_usb_protocol.h/c`）
+  - 帧格式：`0xAA 0x55` 双字节同步头 + 1 字节长度 + CRC8 校验（多项式 0x07）
+  - 接收状态机：跨 USB 包重组 + 校验 + 重同步
+  - 命令-应答：`GET_ANGLE` 查询角度（float 小端回传）、`SET_CONFIG` 运行中切换预设
+  - 状态码：OK / ERR_LEN / ERR_PARAM / ERR_UNKNOWN
+- `app_usb.c` 由 echo 改为转发协议层解析
 
 ### v3.1.0 (2026-08-03)
 - 新增 USB-CDC 虚拟串口通讯（硬件接线 + CubeMX 配置 + echo 收发验证通过）
