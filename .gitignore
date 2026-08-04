@@ -1,6 +1,16 @@
 # Build output
 build/
 
+# .NET build output
+bin/
+obj/
+
+# Visual Studio user settings
+*.user
+
+# Visual Studio cache
+.vs/
+
 # STM32CubeIDE settings (user-specific)
 .settings/
 
