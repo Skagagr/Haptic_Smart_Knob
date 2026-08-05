@@ -9,7 +9,7 @@
 
 ### 串口通信（USB-CDC）
 - 打开 / 关闭串口（串口号当前硬编码为 COM7）
-- 50ms 定时轮询查询角度，转动旋钮实时刷新
+- 50ms 定时轮询查询角度，转动旋钮实时刷新（轮询静默，不刷日志）
 
 ### 查询角度
 - 自动发送 `GET_ANGLE` 命令帧，解析回包中的角度（float 小端）
@@ -19,9 +19,32 @@
 - 5 种预设一键切换（COARSE_6 / NORMAL_12 / FINE_24 / DENSE_48 / SMOOTH）
 - 发送 `SET_CONFIG` 命令，旋钮运行中实时切换卡位手感
 - 显示 ACK 结果（成功 / 状态码）
+- 连接串口时默认自动设为 **FINE_24**
+
+### 音量控制
+- 角度差检测：转旋钮累加满一个卡位 → 音量 ±1%
+- TrackBar 滑块 + 百分比数值实时显示，可拖动反向设置音量
+- **音量控制模式**（复选框）：勾选时向固件发 `SET_LIMIT_MODE=0` 关闭限位，
+  旋钮可无限旋转连续调音量；取消时恢复双边限位（-180°~360°）
+
+### 亮度控制
+- 与音量控制同逻辑：转旋钮累加满一个卡位 → 亮度 ±1%
+- 通过 WMI 读写屏幕亮度（`WmiMonitorBrightness`），后台线程节流写入，旋转流畅不卡界面
+- **亮度控制模式**（复选框）：勾选时同样关闭限位无限旋转
+- 音量 / 亮度模式**互斥**（勾选一个自动取消另一个）
+
+### 步进间隔（随预设自适应）
+| 预设 | 每卡位角度 | 音量/亮度步进间隔 |
+|------|-----------|------------------|
+| COARSE_6 | 60° | 每 60° ±1 |
+| NORMAL_12 | 30° | 每 30° ±1 |
+| FINE_24 | 15° | 每 15° ±1 |
+| DENSE_48 | 7.5° | 每 7.5° ±1 |
+| SMOOTH | 3.6°（360/100） | 每 3.6° ±1，一圈正好调完 |
 
 ### 收发日志
-- 时间戳 + hex 帧显示（发送帧与接收帧）
+- 时间戳 + hex 帧显示
+- **不记录**角度轮询帧（角度已在 UI 显示），仅记录预设切换 / 限位模式等命令
 
 ---
 
@@ -52,9 +75,12 @@ Haptic_Knob_Host/
 ├── Form1.Designer.cs         # 设计器布局（VS 自动生成）
 ├── Form1.resx
 ├── Program.cs                # 程序入口
-├── Haptic_Knob_Host.csproj   # 工程文件（.NET 8 + System.IO.Ports）
-└── Protocol/
-    └── KnobProtocol.cs       # 协议层：CRC8 + 组帧 + 帧解析
+├── Haptic_Knob_Host.csproj   # 工程文件（.NET 8 + System.IO.Ports + NAudio + System.Management）
+├── Protocol/
+│   └── KnobProtocol.cs       # 协议层：CRC8 + 组帧 + 帧解析
+└── Volume/
+    ├── VolumeController.cs   # 系统音量控制器（NAudio CoreAudio 封装）
+    └── BrightnessController.cs  # 系统亮度控制器（WMI 封装，后台节流写入）
 ```
 
 ### 协议说明
@@ -69,6 +95,7 @@ Haptic_Knob_Host/
 |------|------|------|------|------|
 | `GET_ANGLE` | 0x03 | 空 | 0x83 | 查询角度，回 4B float（小端） |
 | `SET_CONFIG` | 0x02 | 1B = preset (0~4) | 0x82 | 设置预设 |
+| `SET_LIMIT_MODE` | 0x04 | 1B = mode (0关闭/1单边/2双边) | 0x84 | 设置限位模式 |
 
 - 同步头：`0xAA 0x55` 双字节
 - CRC8：多项式 0x07，覆盖 Type+Len+Payload
@@ -81,13 +108,24 @@ Haptic_Knob_Host/
 1. Visual Studio 打开 `Haptic_Knob_Host.sln`（.NET 8 桌面开发工作负载）
 2. 旋钮 USB 插入电脑，在设备管理器确认虚拟串口号（如 COM7）
 3. 若串口号不是 COM7，修改 `Form1.cs` 中 `new SerialPort("COM7", 115200)`
-4. F5 运行 → 打开串口 → 自动轮询显示角度 → 点击预设按钮切换卡位手感
+4. F5 运行 → 打开串口（自动设 FINE_24）→ 角度实时显示
+5. 点预设按钮切换卡位手感；勾选音量/亮度控制模式后转旋钮调音量/亮度
 
-> 依赖 NuGet 包：`System.IO.Ports`
+> 依赖 NuGet 包：`System.IO.Ports`、`NAudio`、`System.Management`
+> 亮度控制依赖 WMI，笔记本/内置屏通常可用，部分台式机外接显示器可能不支持
 
 ---
 
 ## 更新日志
+
+### v0.3.0 (2026-08-05)
+- 新增音量控制：角度差检测 → 每卡位 ±1%，TrackBar 滑块 + 数值显示，NAudio CoreAudio 封装
+- 新增亮度控制：WMI 读写屏幕亮度，同音量逻辑；后台线程节流写入，快速旋转不卡界面
+- 控制模式改为枚举 `KnobControlMode`（None/Volume/Brightness），音量/亮度互斥，便于后续扩展
+- 任一控制模式开启时关闭固件限位（无限旋转），协议层新增 `SET_LIMIT_MODE` 命令封装
+- 默认预设改为 FINE_24（连接串口时自动设置）
+- SMOOTH 预设步进间隔改为 3.6°（360/100，一圈调完 0~100）
+- 日志优化：角度轮询帧不再记录（UI 已有角度），删除查询角度按钮
 
 ### v0.2.1 (2026-08-05)
 - 代码重构：协议魔法数字抽为枚举（KnobCmd / KnobStatus），响应判断语义化

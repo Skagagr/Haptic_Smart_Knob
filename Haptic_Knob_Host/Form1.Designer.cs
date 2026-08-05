@@ -30,7 +30,6 @@
         {
             components = new System.ComponentModel.Container();
             btnOpen = new Button();
-            btnQuery = new Button();
             txtLog = new TextBox();
             lblAngle = new Label();
             pollTimer = new System.Windows.Forms.Timer(components);
@@ -40,6 +39,14 @@
             btnPreset3 = new Button();
             btnPreset4 = new Button();
             lblAck = new Label();
+            trackBarVolume = new TrackBar();
+            lblVolume = new Label();
+            chkVolumeMode = new CheckBox();
+            trackBarBrightness = new TrackBar();
+            lblBrightness = new Label();
+            chkBrightnessMode = new CheckBox();
+            ((System.ComponentModel.ISupportInitialize)trackBarVolume).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)trackBarBrightness).BeginInit();
             SuspendLayout();
             // 
             // btnOpen
@@ -51,16 +58,6 @@
             btnOpen.Text = "打开串口";
             btnOpen.UseVisualStyleBackColor = true;
             btnOpen.Click += btnOpen_Click;
-            // 
-            // btnQuery
-            // 
-            btnQuery.Location = new Point(93, 48);
-            btnQuery.Name = "btnQuery";
-            btnQuery.Size = new Size(75, 23);
-            btnQuery.TabIndex = 1;
-            btnQuery.Text = "查询角度";
-            btnQuery.UseVisualStyleBackColor = true;
-            btnQuery.Click += btnQuery_Click;
             // 
             // txtLog
             // 
@@ -75,7 +72,7 @@
             // lblAngle
             // 
             lblAngle.Font = new Font("Microsoft YaHei UI", 24F, FontStyle.Regular, GraphicsUnit.Point, 134);
-            lblAngle.Location = new Point(237, 48);
+            lblAngle.Location = new Point(214, 29);
             lblAngle.Name = "lblAngle";
             lblAngle.Size = new Size(133, 44);
             lblAngle.TabIndex = 3;
@@ -152,11 +149,75 @@
             lblAck.TabIndex = 9;
             lblAck.Text = "未设置";
             // 
+            // trackBarVolume
+            // 
+            trackBarVolume.Location = new Point(159, 185);
+            trackBarVolume.Maximum = 100;
+            trackBarVolume.Name = "trackBarVolume";
+            trackBarVolume.Size = new Size(104, 45);
+            trackBarVolume.TabIndex = 10;
+            trackBarVolume.Value = 50;
+            trackBarVolume.Scroll += trackBarVolume_Scroll;
+            // 
+            // lblVolume
+            // 
+            lblVolume.AutoSize = true;
+            lblVolume.Location = new Point(196, 150);
+            lblVolume.Name = "lblVolume";
+            lblVolume.Size = new Size(57, 17);
+            lblVolume.TabIndex = 11;
+            lblVolume.Text = "音量: 0%";
+            // 
+            // chkVolumeMode
+            // 
+            chkVolumeMode.AutoSize = true;
+            chkVolumeMode.Location = new Point(174, 126);
+            chkVolumeMode.Name = "chkVolumeMode";
+            chkVolumeMode.Size = new Size(171, 21);
+            chkVolumeMode.TabIndex = 12;
+            chkVolumeMode.Text = "音量控制模式（无限旋转）";
+            chkVolumeMode.UseVisualStyleBackColor = true;
+            // 
+            // trackBarBrightness
+            // 
+            trackBarBrightness.Location = new Point(358, 185);
+            trackBarBrightness.Maximum = 100;
+            trackBarBrightness.Name = "trackBarBrightness";
+            trackBarBrightness.Size = new Size(104, 45);
+            trackBarBrightness.TabIndex = 13;
+            trackBarBrightness.Value = 50;
+            trackBarBrightness.Scroll += trackBarBrightness_Scroll;
+            // 
+            // lblBrightness
+            // 
+            lblBrightness.AutoSize = true;
+            lblBrightness.Location = new Point(395, 150);
+            lblBrightness.Name = "lblBrightness";
+            lblBrightness.Size = new Size(57, 17);
+            lblBrightness.TabIndex = 14;
+            lblBrightness.Text = "亮度: 0%";
+            // 
+            // chkBrightnessMode
+            // 
+            chkBrightnessMode.AutoSize = true;
+            chkBrightnessMode.Location = new Point(373, 126);
+            chkBrightnessMode.Name = "chkBrightnessMode";
+            chkBrightnessMode.Size = new Size(171, 21);
+            chkBrightnessMode.TabIndex = 15;
+            chkBrightnessMode.Text = "亮度控制模式（无限旋转）";
+            chkBrightnessMode.UseVisualStyleBackColor = true;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 17F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
+            Controls.Add(chkBrightnessMode);
+            Controls.Add(lblBrightness);
+            Controls.Add(trackBarBrightness);
+            Controls.Add(chkVolumeMode);
+            Controls.Add(lblVolume);
+            Controls.Add(trackBarVolume);
             Controls.Add(lblAck);
             Controls.Add(btnPreset4);
             Controls.Add(btnPreset3);
@@ -165,10 +226,11 @@
             Controls.Add(btnPreset0);
             Controls.Add(lblAngle);
             Controls.Add(txtLog);
-            Controls.Add(btnQuery);
             Controls.Add(btnOpen);
             Name = "Form1";
             Text = "Form1";
+            ((System.ComponentModel.ISupportInitialize)trackBarVolume).EndInit();
+            ((System.ComponentModel.ISupportInitialize)trackBarBrightness).EndInit();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -176,7 +238,6 @@
         #endregion
 
         private Button btnOpen;
-        private Button btnQuery;
         private TextBox txtLog;
         private Label lblAngle;
         private System.Windows.Forms.Timer pollTimer;
@@ -186,5 +247,11 @@
         private Button btnPreset3;
         private Button btnPreset4;
         private Label lblAck;
+        private TrackBar trackBarVolume;
+        private Label lblVolume;
+        private CheckBox chkVolumeMode;
+        private TrackBar trackBarBrightness;
+        private Label lblBrightness;
+        private CheckBox chkBrightnessMode;
     }
 }

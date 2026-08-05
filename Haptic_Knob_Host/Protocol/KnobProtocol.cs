@@ -10,8 +10,17 @@ namespace Haptic_Knob_Host.Protocol
     /// <summary>命令类型（与固件 app_usb_protocol.h 对齐）</summary>
     public enum KnobCmd : byte
     {
-        SetConfig = 0x02,   // 设置预设
-        GetAngle  = 0x03,   // 查询角度
+        SetConfig     = 0x02,   // 设置预设
+        GetAngle      = 0x03,   // 查询角度
+        SetLimitMode  = 0x04,   // 设置限位模式
+    }
+
+    /// <summary>限位模式（与固件 Knob_LimitMode_t 对齐）</summary>
+    public enum KnobLimitMode : byte
+    {
+        Off    = 0,   // 关闭限位（无限旋转）
+        Single = 1,   // 单边限位
+        Dual   = 2,   // 双边限位
     }
 
     /// <summary>状态码（响应载荷首字节）</summary>
@@ -84,6 +93,9 @@ namespace Haptic_Knob_Host.Protocol
 
         /// <summary>设置预设命令帧（preset 0~4）</summary>
         public static byte[] BuildSetConfig(byte preset) => BuildFrame((byte)KnobCmd.SetConfig, new[] { preset });
+
+        /// <summary>设置限位模式命令帧（0关闭/1单边/2双边）</summary>
+        public static byte[] BuildSetLimitMode(KnobLimitMode mode) => BuildFrame((byte)KnobCmd.SetLimitMode, new[] { (byte)mode });
 
         #endregion
     }
