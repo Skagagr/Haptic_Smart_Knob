@@ -46,6 +46,9 @@ static int              s_still_count;      ///< 连续静止计数器（用于�
 // 事件检测
 static int              s_last_detent;      ///< 上次卡位编号，用于检测切换
 
+// 蜂鸣器开关
+static int              s_buzzer_enabled;   ///< 蜂鸣器开关（1=开, 0=关），默认开启
+
 // ============================== 调试用全局变量  ==============================
 volatile int32_t raw_count;
 volatile float   angle;
@@ -68,7 +71,7 @@ void App_Knob_Init(void)
     BSP_KnobEncoder_Init(&htim2);
     BSP_KnobMotor_Init(&htim4);
 
-    // 默认配置：48 卡位，中等力度
+    // 默认配置：12 卡位，中等力度
     s_config.preset = KNOB_PRESET_NORMAL_12;
     s_config.detent_strength = 7;
     s_config.return_strength = 8;
@@ -85,6 +88,7 @@ void App_Knob_Init(void)
     s_current_state = KNOB_STATE_FREE;
     s_still_count = 0;
     s_last_detent = 0;
+    s_buzzer_enabled = 1;   // 默认开启蜂鸣器
 
     // 初始化传感器状态
     s_last_angle = BSP_KnobEncoder_GetAngle();
@@ -163,7 +167,10 @@ void App_Knob_Control(void)
         if (s_current_detent != s_last_detent)  // 使蜂鸣器在同一个卡位点不会持续响
         {
             s_last_detent = s_current_detent;
-            BSP_KnobBuzzer_Click();
+            if (s_buzzer_enabled)
+            {
+                BSP_KnobBuzzer_Click();
+            }
         }
     }
 
@@ -211,6 +218,16 @@ void App_Knob_GetConfig(KnobConfig_t *cfg)
     *cfg = s_config;
 }
 
+void App_Knob_SetBuzzerEnabled(int enabled)
+{
+    s_buzzer_enabled = (enabled != 0);
+}
+
+int App_Knob_IsBuzzerEnabled(void)
+{
+    return s_buzzer_enabled;
+}
+
 // ======================== 限位回调（供 limit.c 调用） ========================
 
 /**
@@ -220,7 +237,10 @@ void AppKnob_OnLimitEnter(void)
 {
     s_current_state = KNOB_STATE_LIMIT_BOUNCE;
     s_still_count = 0;
-    BSP_KnobBuzzer_Click();
+    if (s_buzzer_enabled)
+    {
+        BSP_KnobBuzzer_Click();
+    }
 }
 
 /**

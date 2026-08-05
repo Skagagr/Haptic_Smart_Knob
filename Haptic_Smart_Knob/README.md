@@ -46,6 +46,11 @@
 - **双向同步**：下位机按钮切换 → 上位机轮询读到并更新 UI；
   上位机 UI 选择模式 → 发 `SET_MODE` 同步到下位机
 
+### 蜂鸣器开关
+- 上位机勾选框控制蜂鸣器开关（默认开启）
+- 关闭时卡位切换 / 限位撞击蜂鸣均静音
+- 通过 `SET_BUZZER` 命令同步，状态保存在下位机 `App_Knob_SetBuzzerEnabled`
+
 ---
 
 ## 硬件
@@ -160,6 +165,7 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 | `SET_LIMIT_MODE` | 0x04 | 1B = mode (0关闭/1单边/2双边) | 设置限位模式，调用 `KnobLimit_SetConfig` |
 | `GET_STATE` | 0x07 | 空 | 查询状态，返回 [模式1B][角度4B float] |
 | `SET_MODE` | 0x08 | 1B = mode (0空闲/1音量/2亮度) | 设置控制模式，调用 `AppMode_SetMode` |
+| `SET_BUZZER` | 0x09 | 1B = 0关/1开 | 设置蜂鸣器开关，调用 `App_Knob_SetBuzzerEnabled` |
 
 **状态码（响应载荷首字节）：**
 
@@ -191,6 +197,10 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
           AA 55 08 01 02 <CRC>              // 2=控制亮度
           AA 55 08 01 00 <CRC>              // 0=空闲
           → 回 AA 55 88 01 00 <CRC>         // ACK（同时点亮对应 LED）
+
+设置蜂鸣:  AA 55 09 01 01 <CRC>              // 1=开启蜂鸣器
+          AA 55 09 01 00 <CRC>              // 0=关闭蜂鸣器
+          → 回 AA 55 89 01 00 <CRC>         // ACK
 ```
 
 > `GET_STATE` 典型场景：上位机 50ms 轮询一次即可同时拿到控制模式和角度，
@@ -525,6 +535,10 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 ---
 
 ## 更新日志
+
+### v3.4.1 (2026-08-05)
+- 新增蜂鸣器开关：`SET_BUZZER` 命令（0x09）上位机控制，默认开启
+  - 关闭时卡位/限位蜂鸣均静音，状态保存在 `App_Knob_SetBuzzerEnabled`
 
 ### v3.4.0 (2026-08-05)
 - 新增控制模式指示与切换：

@@ -66,6 +66,7 @@ static void UsbProto_HandleGetAngle(void);
 static void UsbProto_HandleSetLimitMode(void);
 static void UsbProto_HandleGetState(void);
 static void UsbProto_HandleSetMode(void);
+static void UsbProto_HandleSetBuzzer(void);
 static void UsbProto_SendResponse(uint8_t cmd, uint8_t status,
                                   const uint8_t *data, uint8_t data_len);
 
@@ -215,6 +216,10 @@ static void UsbProto_Dispatch(void)
             UsbProto_HandleSetMode();
             break;
 
+        case USB_PROTO_CMD_SET_BUZZER:
+            UsbProto_HandleSetBuzzer();
+            break;
+
         default:
             UsbProto_SendResponse(s_rx_type, USB_PROTO_STATUS_ERR_UNKNOWN, NULL, 0);
             break;
@@ -342,6 +347,30 @@ static void UsbProto_HandleSetMode(void)
     }
 
     UsbProto_SendResponse(USB_PROTO_CMD_SET_MODE, status, NULL, 0);
+}
+
+/**
+ * @brief 设置蜂鸣器开关：payload[0] = 0关/1开
+ * @details 由上位机勾选框控制；关闭时卡位/限位蜂鸣均静音
+ */
+static void UsbProto_HandleSetBuzzer(void)
+{
+    uint8_t status = USB_PROTO_STATUS_OK;
+
+    if (s_rx_len != 1)
+    {
+        status = USB_PROTO_STATUS_ERR_LEN;
+    }
+    else if (s_rx_payload[0] > 1)
+    {
+        status = USB_PROTO_STATUS_ERR_PARAM;
+    }
+    else
+    {
+        App_Knob_SetBuzzerEnabled((int)s_rx_payload[0]);
+    }
+
+    UsbProto_SendResponse(USB_PROTO_CMD_SET_BUZZER, status, NULL, 0);
 }
 
 // =================================== 发送  ===================================

@@ -82,6 +82,18 @@ void App_Knob_SetConfig(const KnobConfig_t *cfg);
 void App_Knob_GetConfig(KnobConfig_t *cfg);
 
 /**
+ * @brief 设置蜂鸣器开关（0=关, 非0=开），默认开启
+ * @details 由上位机 SET_BUZZER 命令控制；关闭时卡位/限位蜂鸣均静音
+ */
+void App_Knob_SetBuzzerEnabled(int enabled);
+
+/**
+ * @brief 查询蜂鸣器开关状态
+ * @return 1=开启, 0=关闭
+ */
+int App_Knob_IsBuzzerEnabled(void);
+
+/**
  * @brief 限位模块回调 — 进入限位弹跳时调用
  * @details 由 KnobLimit_Update 在检测到越界时调用。
  *          触发蜂鸣器并切换状态机到 LIMIT_BOUNCE。

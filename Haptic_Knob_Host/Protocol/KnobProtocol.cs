@@ -15,6 +15,7 @@ namespace Haptic_Knob_Host.Protocol
         SetLimitMode  = 0x04,   // 设置限位模式
         GetState      = 0x07,   // 查询状态（模式 + 角度合一）
         SetMode       = 0x08,   // 设置控制模式（上位机 → 下位机）
+        SetBuzzer     = 0x09,   // 设置蜂鸣器开关（上位机 → 下位机）
     }
 
     /// <summary>控制模式（与固件 KnobStateMode_t 对齐：0=空闲/1=音量/2=亮度）</summary>
@@ -112,6 +113,9 @@ namespace Haptic_Knob_Host.Protocol
 
         /// <summary>设置控制模式命令帧（0空闲/1音量/2亮度）</summary>
         public static byte[] BuildSetMode(KnobControlMode mode) => BuildFrame((byte)KnobCmd.SetMode, new[] { (byte)mode });
+
+        /// <summary>设置蜂鸣器开关命令帧（0关/1开）</summary>
+        public static byte[] BuildSetBuzzer(bool enabled) => BuildFrame((byte)KnobCmd.SetBuzzer, new[] { enabled ? (byte)1 : (byte)0 });
 
         #endregion
     }

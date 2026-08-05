@@ -45,6 +45,7 @@
             trackBarVolume = new TrackBar();
             lblVolume = new Label();
             chkVolumeMode = new CheckBox();
+            chkBuzzer = new CheckBox();
             trackBarBrightness = new TrackBar();
             lblBrightness = new Label();
             chkBrightnessMode = new CheckBox();
@@ -209,6 +210,18 @@
             chkVolumeMode.Text = "音量控制模式（无限旋转）";
             chkVolumeMode.UseVisualStyleBackColor = true;
             // 
+            // chkBuzzer
+            // 
+            chkBuzzer.AutoSize = true;
+            chkBuzzer.Checked = true;
+            chkBuzzer.CheckState = CheckState.Checked;
+            chkBuzzer.Location = new Point(174, 92);
+            chkBuzzer.Name = "chkBuzzer";
+            chkBuzzer.Size = new Size(92, 21);
+            chkBuzzer.TabIndex = 16;
+            chkBuzzer.Text = "蜂鸣器开关";
+            chkBuzzer.UseVisualStyleBackColor = true;
+            // 
             // trackBarBrightness
             // 
             trackBarBrightness.Location = new Point(358, 185);
@@ -246,6 +259,7 @@
             Controls.Add(chkBrightnessMode);
             Controls.Add(lblBrightness);
             Controls.Add(trackBarBrightness);
+            Controls.Add(chkBuzzer);
             Controls.Add(chkVolumeMode);
             Controls.Add(lblVolume);
             Controls.Add(trackBarVolume);
@@ -287,6 +301,7 @@
         private TrackBar trackBarVolume;
         private Label lblVolume;
         private CheckBox chkVolumeMode;
+        private CheckBox chkBuzzer;
         private TrackBar trackBarBrightness;
         private Label lblBrightness;
         private CheckBox chkBrightnessMode;

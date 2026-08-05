@@ -24,6 +24,7 @@ namespace Haptic_Knob_Host
             serialPort.DataReceived += SerialPort_DataReceived;
             chkVolumeMode.CheckedChanged += chkVolumeMode_CheckedChanged;
             chkBrightnessMode.CheckedChanged += chkBrightnessMode_CheckedChanged;
+            chkBuzzer.CheckedChanged += chkBuzzer_CheckedChanged;
             pollTimer.Start();
             FormClosing += Form1_FormClosing;
             RefreshPorts();                 // 启动时枚举可用串口
@@ -357,6 +358,13 @@ namespace Haptic_Knob_Host
             var mode = anyMode ? KnobLimitMode.Off : KnobLimitMode.Dual;
             Send(KnobProtocol.BuildSetLimitMode(mode),
                  anyMode ? "进入控制模式（无限旋转）" : "退出控制模式（恢复限位）");
+        }
+
+        /// <summary>蜂鸣器开关：勾选/取消 → 同步下位机蜂鸣器状态</summary>
+        private void chkBuzzer_CheckedChanged(object? sender, EventArgs e)
+        {
+            Send(KnobProtocol.BuildSetBuzzer(chkBuzzer.Checked),
+                 chkBuzzer.Checked ? "蜂鸣器开启" : "蜂鸣器关闭");
         }
 
         #endregion
