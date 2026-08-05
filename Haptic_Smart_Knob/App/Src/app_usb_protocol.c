@@ -9,6 +9,7 @@
  */
 #include "app_usb_protocol.h"
 #include "app_knob.h"
+#include "app_knob_limit.h"
 #include "bsp_knob_encoder.h"
 #include "usbd_cdc_if.h"
 #include <string.h>
@@ -61,6 +62,7 @@ static uint8_t UsbProto_Crc8Update(uint8_t crc, const uint8_t *data, uint8_t len
 static void UsbProto_Dispatch(void);
 static void UsbProto_HandleSetConfig(void);
 static void UsbProto_HandleGetAngle(void);
+static void UsbProto_HandleSetLimitMode(void);
 static void UsbProto_SendResponse(uint8_t cmd, uint8_t status,
                                   const uint8_t *data, uint8_t data_len);
 
@@ -198,6 +200,10 @@ static void UsbProto_Dispatch(void)
             UsbProto_HandleGetAngle();
             break;
 
+        case USB_PROTO_CMD_SET_LIMIT_MODE:
+            UsbProto_HandleSetLimitMode();
+            break;
+
         default:
             UsbProto_SendResponse(s_rx_type, USB_PROTO_STATUS_ERR_UNKNOWN, NULL, 0);
             break;
@@ -247,6 +253,34 @@ static void UsbProto_HandleGetAngle(void)
     float angle = BSP_KnobEncoder_GetAngle();
     UsbProto_SendResponse(USB_PROTO_CMD_GET_ANGLE, status,
                           (const uint8_t *)&angle, sizeof(angle));
+}
+
+/**
+ * @brief 设置限位模式：payload[0] = 0关闭/1单边/2双边
+ * @details 复用 KnobLimit_GetConfig/SetConfig 运行时切换限位模式，
+ *          用于上位机"音量控制"等需要无限旋转的场景（关闭限位）。
+ */
+static void UsbProto_HandleSetLimitMode(void)
+{
+    uint8_t status = USB_PROTO_STATUS_OK;
+
+    if (s_rx_len != 1)
+    {
+        status = USB_PROTO_STATUS_ERR_LEN;
+    }
+    else if (s_rx_payload[0] > KNOB_LIMIT_MODE_DUAL)
+    {
+        status = USB_PROTO_STATUS_ERR_PARAM;
+    }
+    else
+    {
+        Knob_LimitConfig_t lim;
+        KnobLimit_GetConfig(&lim);
+        lim.mode = (Knob_LimitMode_t)s_rx_payload[0];
+        KnobLimit_SetConfig(&lim);
+    }
+
+    UsbProto_SendResponse(USB_PROTO_CMD_SET_LIMIT_MODE, status, NULL, 0);
 }
 
 // =================================== 发送  ===================================

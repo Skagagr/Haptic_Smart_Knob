@@ -34,6 +34,8 @@
 - **命令-应答模式**：PC 主导，MCU 应答，带状态码
 - **查询角度**：PC 发 `GET_ANGLE` 命令，MCU 回传当前角度（float，小端）
 - **设置预设**：PC 发 `SET_CONFIG` 命令，运行中切换 5 种卡位预设
+- **设置限位模式**：PC 发 `SET_LIMIT_MODE` 命令，运行中切换限位开/关，
+  供上位机音量/亮度控制模式实现无限旋转
 
 ---
 
@@ -146,6 +148,7 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 |------|------|------|------|
 | `SET_CONFIG` | 0x02 | 1B = preset (0~4) | 设置预设，调用 `App_Knob_SetConfig` |
 | `GET_ANGLE` | 0x03 | 空 | 查询当前角度，返回 4B float（小端） |
+| `SET_LIMIT_MODE` | 0x04 | 1B = mode (0关闭/1单边/2双边) | 设置限位模式，调用 `KnobLimit_SetConfig` |
 
 **状态码（响应载荷首字节）：**
 
@@ -164,7 +167,14 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 
 设置预设:  AA 55 02 01 03 CA                   // DENSE_48 (3)
           → 回 AA 55 82 01 00 <CRC>           // ACK
+
+设置限位:  AA 55 04 01 00 <CRC>               // 0=关闭限位（无限旋转）
+          AA 55 04 01 02 <CRC>               // 2=双边限位（默认）
+          → 回 AA 55 84 01 00 <CRC>          // ACK
 ```
+
+> `SET_LIMIT_MODE` 典型场景：上位机"音量控制模式"勾选时关闭限位，
+> 旋钮可无限旋转用于连续调音量；取消时恢复双边限位。
 
 **新增一条命令**只需改 3 处（以 `CMD_GET_STATE = 0x04` 为例）：
 1. `app_usb_protocol.h` 枚举加 `USB_PROTO_CMD_GET_STATE = 0x04`
@@ -480,6 +490,10 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 ---
 
 ## 更新日志
+
+### v3.3.0 (2026-08-05)
+- 新增 `SET_LIMIT_MODE` 命令（0x04）：运行中切换限位模式（关闭/单边/双边）
+  - 复用 `KnobLimit_GetConfig/SetConfig`，用于上位机音量/亮度控制模式的无限旋转
 
 ### v3.2.0 (2026-08-04)
 - 新增 USB 双向通信协议（`app_usb_protocol.h/c`）
