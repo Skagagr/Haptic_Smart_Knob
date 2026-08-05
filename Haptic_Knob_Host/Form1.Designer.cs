@@ -30,6 +30,9 @@
         {
             components = new System.ComponentModel.Container();
             btnOpen = new Button();
+            lblPort = new Label();
+            cmbPort = new ComboBox();
+            btnRefresh = new Button();
             txtLog = new TextBox();
             lblAngle = new Label();
             pollTimer = new System.Windows.Forms.Timer(components);
@@ -51,13 +54,41 @@
             // 
             // btnOpen
             // 
-            btnOpen.Location = new Point(12, 48);
+            btnOpen.Location = new Point(256, 21);
             btnOpen.Name = "btnOpen";
             btnOpen.Size = new Size(75, 23);
             btnOpen.TabIndex = 0;
             btnOpen.Text = "打开串口";
             btnOpen.UseVisualStyleBackColor = true;
             btnOpen.Click += btnOpen_Click;
+            // 
+            // lblPort
+            // 
+            lblPort.AutoSize = true;
+            lblPort.Location = new Point(12, 22);
+            lblPort.Name = "lblPort";
+            lblPort.Size = new Size(35, 17);
+            lblPort.TabIndex = 1;
+            lblPort.Text = "端口:";
+            // 
+            // cmbPort
+            // 
+            cmbPort.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbPort.FormattingEnabled = true;
+            cmbPort.Location = new Point(55, 19);
+            cmbPort.Name = "cmbPort";
+            cmbPort.Size = new Size(110, 25);
+            cmbPort.TabIndex = 2;
+            // 
+            // btnRefresh
+            // 
+            btnRefresh.Location = new Point(175, 19);
+            btnRefresh.Name = "btnRefresh";
+            btnRefresh.Size = new Size(75, 23);
+            btnRefresh.TabIndex = 3;
+            btnRefresh.Text = "刷新端口";
+            btnRefresh.UseVisualStyleBackColor = true;
+            btnRefresh.Click += btnRefresh_Click;
             // 
             // txtLog
             // 
@@ -72,7 +103,7 @@
             // lblAngle
             // 
             lblAngle.Font = new Font("Microsoft YaHei UI", 24F, FontStyle.Regular, GraphicsUnit.Point, 134);
-            lblAngle.Location = new Point(214, 29);
+            lblAngle.Location = new Point(258, 58);
             lblAngle.Name = "lblAngle";
             lblAngle.Size = new Size(133, 44);
             lblAngle.TabIndex = 3;
@@ -143,7 +174,7 @@
             // 
             lblAck.AutoSize = true;
             lblAck.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Regular, GraphicsUnit.Point, 134);
-            lblAck.Location = new Point(587, 26);
+            lblAck.Location = new Point(12, 244);
             lblAck.Name = "lblAck";
             lblAck.Size = new Size(44, 17);
             lblAck.TabIndex = 9;
@@ -227,6 +258,9 @@
             Controls.Add(lblAngle);
             Controls.Add(txtLog);
             Controls.Add(btnOpen);
+            Controls.Add(btnRefresh);
+            Controls.Add(cmbPort);
+            Controls.Add(lblPort);
             Name = "Form1";
             Text = "Form1";
             ((System.ComponentModel.ISupportInitialize)trackBarVolume).EndInit();
@@ -238,6 +272,9 @@
         #endregion
 
         private Button btnOpen;
+        private Label lblPort;
+        private ComboBox cmbPort;
+        private Button btnRefresh;
         private TextBox txtLog;
         private Label lblAngle;
         private System.Windows.Forms.Timer pollTimer;

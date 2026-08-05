@@ -6,7 +6,7 @@ namespace Haptic_Knob_Host
 {
     public partial class Form1 : Form
     {
-        private SerialPort serialPort = new SerialPort("COM7", 115200);
+        private SerialPort serialPort = new SerialPort();   // 端口名在打开时从下拉框设置
         private KnobFrameParser parser = new KnobFrameParser();
 
         private VolumeController volume = new VolumeController();
@@ -26,17 +26,48 @@ namespace Haptic_Knob_Host
             chkBrightnessMode.CheckedChanged += chkBrightnessMode_CheckedChanged;
             pollTimer.Start();
             FormClosing += Form1_FormClosing;
+            RefreshPorts();                 // 启动时枚举可用串口
             UpdateVolumeUI();
             UpdateBrightnessUI();
         }
 
         #region 串口开关
 
+        /// <summary>刷新可用串口列表到下拉框</summary>
+        private void RefreshPorts()
+        {
+            string previous = cmbPort.SelectedItem as string ?? "";
+            cmbPort.Items.Clear();
+            cmbPort.Items.AddRange(SerialPort.GetPortNames());
+            if (cmbPort.Items.Contains(previous))
+            {
+                cmbPort.SelectedItem = previous;      // 保持之前选中的端口
+            }
+            else if (cmbPort.Items.Count > 0)
+            {
+                cmbPort.SelectedIndex = 0;
+            }
+        }
+
+        /// <summary>点击刷新端口按钮：重新枚举可用串口</summary>
+        private void btnRefresh_Click(object? sender, EventArgs e)
+        {
+            RefreshPorts();
+        }
+
         /// <summary>打开/关闭串口，按钮文字同步切换</summary>
         private void btnOpen_Click(object? sender, EventArgs e)
         {
             if (!serialPort.IsOpen)
             {
+                if (cmbPort.SelectedItem is not string port || port.Length == 0)
+                {
+                    MessageBox.Show("请先选择串口，或点击「刷新端口」重新扫描",
+                                    "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                serialPort.PortName = port;
+                serialPort.BaudRate = 115200;
                 serialPort.Open();
                 btnOpen.Text = "关闭串口";
                 ApplyDefaultPreset();       // 连接后切到默认预设 FINE_24
