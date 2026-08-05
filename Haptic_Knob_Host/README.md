@@ -96,10 +96,13 @@ Haptic_Knob_Host/
 | `GET_ANGLE` | 0x03 | 空 | 0x83 | 查询角度，回 4B float（小端） |
 | `SET_CONFIG` | 0x02 | 1B = preset (0~4) | 0x82 | 设置预设 |
 | `SET_LIMIT_MODE` | 0x04 | 1B = mode (0关闭/1单边/2双边) | 0x84 | 设置限位模式 |
+| `GET_STATE` | 0x07 | 空 | 0x87 | 查询状态，回 [模式1B][角度4B] |
+| `SET_MODE` | 0x08 | 1B = mode (0空闲/1音量/2亮度) | 0x88 | 设置控制模式（同步下位机） |
 
 - 同步头：`0xAA 0x55` 双字节
 - CRC8：多项式 0x07，覆盖 Type+Len+Payload
 - 响应类型 = 命令类型 | 0x80，响应载荷首字节为状态码
+- 轮询用 `GET_STATE` 一次拿模式 + 角度；勾选模式复选框发 `SET_MODE` 同步下位机
 
 ---
 
@@ -117,6 +120,12 @@ Haptic_Knob_Host/
 ---
 
 ## 更新日志
+
+### v0.4.0 (2026-08-05)
+- 轮询改为 `GET_STATE`：一次获取控制模式 + 角度
+- 下位机按钮切换模式 → 上位机轮询读到并同步 UI 复选框（`_syncingMode` 防互斥死循环）
+- 上位机勾选音量/亮度 → 发 `SET_MODE` 同步到下位机（点亮对应 LED）
+- 协议层新增 `GET_STATE`/`SET_MODE` 命令封装，`KnobControlMode` 枚举移至协议层统一
 
 ### v0.3.0 (2026-08-05)
 - 新增音量控制：角度差检测 → 每卡位 ±1%，TrackBar 滑块 + 数值显示，NAudio CoreAudio 封装

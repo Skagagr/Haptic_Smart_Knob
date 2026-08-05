@@ -13,6 +13,16 @@ namespace Haptic_Knob_Host.Protocol
         SetConfig     = 0x02,   // 设置预设
         GetAngle      = 0x03,   // 查询角度
         SetLimitMode  = 0x04,   // 设置限位模式
+        GetState      = 0x07,   // 查询状态（模式 + 角度合一）
+        SetMode       = 0x08,   // 设置控制模式（上位机 → 下位机）
+    }
+
+    /// <summary>控制模式（与固件 KnobStateMode_t 对齐：0=空闲/1=音量/2=亮度）</summary>
+    public enum KnobControlMode : byte
+    {
+        None       = 0,   // 空闲（不控制）
+        Volume     = 1,   // 控制音量
+        Brightness = 2,   // 控制亮度
     }
 
     /// <summary>限位模式（与固件 Knob_LimitMode_t 对齐）</summary>
@@ -96,6 +106,12 @@ namespace Haptic_Knob_Host.Protocol
 
         /// <summary>设置限位模式命令帧（0关闭/1单边/2双边）</summary>
         public static byte[] BuildSetLimitMode(KnobLimitMode mode) => BuildFrame((byte)KnobCmd.SetLimitMode, new[] { (byte)mode });
+
+        /// <summary>查询状态命令帧（返回模式 + 角度）</summary>
+        public static byte[] BuildGetState() => BuildFrame((byte)KnobCmd.GetState, Array.Empty<byte>());
+
+        /// <summary>设置控制模式命令帧（0空闲/1音量/2亮度）</summary>
+        public static byte[] BuildSetMode(KnobControlMode mode) => BuildFrame((byte)KnobCmd.SetMode, new[] { (byte)mode });
 
         #endregion
     }

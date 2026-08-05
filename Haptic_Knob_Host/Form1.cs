@@ -4,14 +4,6 @@ using Haptic_Knob_Host.Volume;
 
 namespace Haptic_Knob_Host
 {
-    /// <summary>旋钮控制模式：旋钮转动时步进调节的目标（可扩展）</summary>
-    public enum KnobControlMode
-    {
-        None = 0,       // 普通旋钮：仅跟随角度，不调节任何系统参数
-        Volume,         // 音量控制
-        Brightness,     // 亮度控制
-    }
-
     public partial class Form1 : Form
     {
         private SerialPort serialPort = new SerialPort("COM7", 115200);
@@ -19,7 +11,8 @@ namespace Haptic_Knob_Host
 
         private VolumeController volume = new VolumeController();
         private BrightnessController brightness = new BrightnessController();
-        private KnobControlMode controlMode = KnobControlMode.None;  // 当前控制模式
+        private KnobControlMode controlMode = KnobControlMode.None;  // 当前控制模式（协议层枚举）
+        private bool _syncingMode;              // 正在从固件同步模式到 UI，跳过互斥回调
         private bool hasLastAngle;          // 第一帧只记录基准，不产生转动
         private float lastAngle;            // 上一次角度
         private float angleAccumulator;     // 角度差累加器
@@ -66,10 +59,10 @@ namespace Haptic_Knob_Host
 
         #region 定时轮询
 
-        /// <summary>周期查询角度（Timer 在主线程触发，可直接操作控件）；轮询不记日志避免刷屏</summary>
+        /// <summary>周期查询状态（Timer 在主线程触发，可直接操作控件）；轮询不记日志避免刷屏</summary>
         private void pollTimer_Tick(object? sender, EventArgs e)
         {
-            SendSilent(KnobProtocol.BuildGetAngle());
+            SendSilent(KnobProtocol.BuildGetState());
         }
 
         #endregion
@@ -116,9 +109,13 @@ namespace Haptic_Knob_Host
         private void HandleFrame(byte[] frame)
         {
             byte type = frame[0];
-            if (type == (byte)((byte)KnobCmd.GetAngle | KnobProtocol.RespFlag))
+            if (type == (byte)((byte)KnobCmd.GetState | KnobProtocol.RespFlag))
             {
-                HandleAngleResponse(frame);     // 角度已在 UI 显示，不记日志
+                HandleStateResponse(frame);     // 轮询主用：模式 + 角度合一
+            }
+            else if (type == (byte)((byte)KnobCmd.GetAngle | KnobProtocol.RespFlag))
+            {
+                HandleAngleResponse(frame);     // 兼容单独的查询角度
             }
             else if (type == (byte)((byte)KnobCmd.SetConfig | KnobProtocol.RespFlag))
             {
@@ -128,6 +125,37 @@ namespace Haptic_Knob_Host
             {
                 HandleLimitModeResponse(frame);
             }
+        }
+
+        /// <summary>状态响应：解析 [模式][角度]，更新界面并同步控制模式</summary>
+        private void HandleStateResponse(byte[] frame)
+        {
+            // frame = [type][status][mode][角度4B float]
+            if ((KnobStatus)frame[1] != KnobStatus.Ok || frame.Length < 7) return;
+            byte mode = frame[2];
+            float angle = BitConverter.ToSingle(frame, 3);
+
+            lblAngle.Text = $"{angle:F1}°";
+            DetectRotation(angle);
+            SyncModeFromFirmware((KnobControlMode)mode);
+        }
+
+        /// <summary>将固件当前模式同步到 UI 复选框（避免互斥回调死循环）</summary>
+        private void SyncModeFromFirmware(KnobControlMode mode)
+        {
+            if (mode == controlMode) return;   // 模式没变，无需更新
+
+            controlMode = mode;                          // 直接设字段，不触发回调
+            bool isVolume = mode == KnobControlMode.Volume;
+            bool isBright = mode == KnobControlMode.Brightness;
+
+            // 通过 _syncingMode 标志防止 CheckedChanged 回调互相触发
+            _syncingMode = true;
+            chkVolumeMode.Checked = isVolume;
+            chkBrightnessMode.Checked = isBright;
+            _syncingMode = false;
+
+            UpdateLimitMode();                           // 同步固件限位状态（模式变化才发）
         }
 
         /// <summary>设置限位模式响应：显示 ACK 结果</summary>
@@ -252,6 +280,8 @@ namespace Haptic_Knob_Host
         /// <summary>音量控制模式：勾选 = 无限旋转 + 步进音量；与亮度模式互斥</summary>
         private void chkVolumeMode_CheckedChanged(object? sender, EventArgs e)
         {
+            if (_syncingMode) return;          // 固件同步中，不重复处理
+
             if (chkVolumeMode.Checked)
             {
                 chkBrightnessMode.Checked = false;        // 互斥：切音量时取消亮度
@@ -261,12 +291,14 @@ namespace Haptic_Knob_Host
             {
                 controlMode = KnobControlMode.None;
             }
-            UpdateLimitMode();
+            ApplyModeChange();                 // 用户操作：同步到下位机
         }
 
         /// <summary>亮度控制模式：勾选 = 无限旋转 + 步进亮度；与音量模式互斥</summary>
         private void chkBrightnessMode_CheckedChanged(object? sender, EventArgs e)
         {
+            if (_syncingMode) return;          // 固件同步中，不重复处理
+
             if (chkBrightnessMode.Checked)
             {
                 chkVolumeMode.Checked = false;            // 互斥：切亮度时取消音量
@@ -276,6 +308,14 @@ namespace Haptic_Knob_Host
             {
                 controlMode = KnobControlMode.None;
             }
+            ApplyModeChange();                 // 用户操作：同步到下位机
+        }
+
+        /// <summary>用户手动改模式：通知下位机切换模式 + 更新限位</summary>
+        private void ApplyModeChange()
+        {
+            Send(KnobProtocol.BuildSetMode(controlMode),
+                 $"设置控制模式 {controlMode}");
             UpdateLimitMode();
         }
 
