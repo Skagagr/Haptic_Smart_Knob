@@ -55,6 +55,7 @@ file(GLOB_RECURSE USER_SOURCES
         Drivers/BSP/Knob_Encoder/*.c
         Drivers/BSP/Knob_Motor/*.c
         Drivers/BSP/Knob_Buzzer/*.c
+        Drivers/BSP/Knob_Indicator/*.c
         App/Src/*.c
 )
 
@@ -79,6 +80,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         Drivers/BSP/Knob_Encoder
         Drivers/BSP/Knob_Motor
         Drivers/BSP/Knob_Buzzer
+        Drivers/BSP/Knob_Indicator
         App/Inc
 )
 

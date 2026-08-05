@@ -28,6 +28,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include "app_knob.h"
+#include "app_mode.h"
 #include "usbd_cdc_if.h"
 /* USER CODE END Includes */
 

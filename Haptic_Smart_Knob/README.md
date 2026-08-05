@@ -33,9 +33,18 @@
 - **帧格式**：`[0xAA][0x55][Type][Len][Payload][CRC8]`，双字节同步头 + 1 字节长度 + CRC8 校验
 - **命令-应答模式**：PC 主导，MCU 应答，带状态码
 - **查询角度**：PC 发 `GET_ANGLE` 命令，MCU 回传当前角度（float，小端）
+- **查询状态**：PC 发 `GET_STATE` 命令，一次返回控制模式 + 角度
 - **设置预设**：PC 发 `SET_CONFIG` 命令，运行中切换 5 种卡位预设
 - **设置限位模式**：PC 发 `SET_LIMIT_MODE` 命令，运行中切换限位开/关，
   供上位机音量/亮度控制模式实现无限旋转
+- **设置控制模式**：PC 发 `SET_MODE` 命令，上位机同步模式到下位机（点亮对应 LED）
+
+### 控制模式指示与切换
+- **3 个指示灯**：PA2=空闲 / PA3=控制音量 / PA4=控制亮度（低电平点亮）
+- **2 个按钮**：PB12=回空闲，PB13=切下一状态（空闲→音量→亮度→空闲），按键消抖扫描
+- **按键扫描在 1kHz 控制循环内**（`App_Knob_Control()`），实时响应不受主循环阻塞
+- **双向同步**：下位机按钮切换 → 上位机轮询读到并更新 UI；
+  上位机 UI 选择模式 → 发 `SET_MODE` 同步到下位机
 
 ---
 
@@ -149,6 +158,8 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 | `SET_CONFIG` | 0x02 | 1B = preset (0~4) | 设置预设，调用 `App_Knob_SetConfig` |
 | `GET_ANGLE` | 0x03 | 空 | 查询当前角度，返回 4B float（小端） |
 | `SET_LIMIT_MODE` | 0x04 | 1B = mode (0关闭/1单边/2双边) | 设置限位模式，调用 `KnobLimit_SetConfig` |
+| `GET_STATE` | 0x07 | 空 | 查询状态，返回 [模式1B][角度4B float] |
+| `SET_MODE` | 0x08 | 1B = mode (0空闲/1音量/2亮度) | 设置控制模式，调用 `AppMode_SetMode` |
 
 **状态码（响应载荷首字节）：**
 
@@ -171,10 +182,20 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 设置限位:  AA 55 04 01 00 <CRC>               // 0=关闭限位（无限旋转）
           AA 55 04 01 02 <CRC>               // 2=双边限位（默认）
           → 回 AA 55 84 01 00 <CRC>          // ACK
+
+查询状态:  AA 55 07 00 <CRC>                 // 一次拿模式 + 角度
+          → 回 AA 55 87 06 00 <模式> <角度4B> <CRC>
+                                             // 00=OK, 模式(0空闲/1音量/2亮度), 后4B float角度
+
+设置模式:  AA 55 08 01 01 <CRC>              // 1=控制音量
+          AA 55 08 01 02 <CRC>              // 2=控制亮度
+          AA 55 08 01 00 <CRC>              // 0=空闲
+          → 回 AA 55 88 01 00 <CRC>         // ACK（同时点亮对应 LED）
 ```
 
-> `SET_LIMIT_MODE` 典型场景：上位机"音量控制模式"勾选时关闭限位，
-> 旋钮可无限旋转用于连续调音量；取消时恢复双边限位。
+> `GET_STATE` 典型场景：上位机 50ms 轮询一次即可同时拿到控制模式和角度，
+> 替代分别发 `GET_ANGLE` + `GET_MODE` 的两次往返。
+> `SET_MODE` 用于上位机 UI 选择模式时同步到下位机（点亮对应 LED）。
 
 **新增一条命令**只需改 3 处（以 `CMD_GET_STATE = 0x04` 为例）：
 1. `app_usb_protocol.h` 枚举加 `USB_PROTO_CMD_GET_STATE = 0x04`
@@ -196,6 +217,8 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 | PB7/PB8 | TB6612 AIN1/AIN2 方向控制 | GPIO Output |
 | PB9 | TB6612 STBY 使能 | GPIO Output, **必须拉高使能** |
 | PB0 | 有源蜂鸣器 | GPIO Output, 低电平触发 |
+| PA2/PA3/PA4 | 控制模式指示灯（空闲/音量/亮度） | GPIO Output, 低电平点亮 |
+| PB12/PB13 | 控制模式切换按钮（回空闲/切下一状态） | GPIO Input, 上拉, 按下=低电平 |
 | USART1 | 调试串口 | 115200, 8N1, TX=PA9, RX=PA10(可不接) |
 | USB | USB-FS Device (CDC 虚拟串口) | CDC (VCP), 48MHz = PLLCLK/1.5, PA11=USB_DM, PA12=USB_DP |
 
@@ -212,7 +235,6 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 │  - 蜂鸣器事件 + 卡位检测                 │
 │  - 协调 physics / limit 子模块           │
 └────────────┬─────────────────────────────┘
-             │
      ┌───────┼───────┐
      │               │
 ┌────▼─────┐   ┌─────▼────┐
@@ -222,6 +244,12 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 └──────────┘   └──────────┘
      │               │
      └───────┬───────┘
+             │
+┌────────────▼─────────────┐
+│  app_mode.c (控制模式)   │
+│  - 模式状态管理           │
+│  - 按钮业务逻辑           │
+└────────────┬─────────────┘
              │
      ┌───────▼────────┐
      │  BSP 层        │
@@ -237,19 +265,22 @@ App/
 │   ├── app_knob.h              # 类型定义 + 对外 API
 │   ├── app_knob_physics.h      # 卡位物理模型接口（纯函数）
 │   ├── app_knob_limit.h        # 限位模块接口
+│   ├── app_mode.h              # 控制模式管理（模式枚举 + 按钮逻辑）
 │   ├── app_usb.h               # USB 收包转发入口
 │   └── app_usb_protocol.h      # USB 协议定义（帧格式/命令/状态码）
 └── Src/
     ├── app_knob.c              # 控制循环 + 状态机 + ISR + 蜂鸣器事件
     ├── app_knob_physics.c      # 预设参数 + 力计算
     ├── app_knob_limit.c        # 双向弹簧 + 阻尼
+    ├── app_mode.c              # 控制模式状态 + 按钮切换
     ├── app_usb.c               # USB 传输层 → 协议层桥
     └── app_usb_protocol.c      # 帧解析状态机 + CRC8 + 命令分发
 
 Drivers/BSP/
 ├── Knob_Motor/                 # N20 + TB6612 电机驱动
 ├── Knob_Encoder/               # TIM2 编码器读取 + 角度换算
-└── Knob_Buzzer/                # 有源蜂鸣器驱动（脉冲管理）
+├── Knob_Buzzer/                # 有源蜂鸣器驱动（脉冲管理）
+└── Knob_Indicator/             # 指示灯 + 按键驱动（LED/消抖扫描）
 
 USB_DEVICE/App/                 # CubeMX 生成（一般不修改）
 └── usbd_cdc_if.c               # USB 收发回调，USER CODE 区转发到 App
@@ -262,6 +293,7 @@ USB_DEVICE/App/                 # CubeMX 生成（一般不修改）
 | **app_knob** | 控制循环、状态机、ISR 回调、蜂鸣器事件、配置管理 |
 | **physics** | 查找卡位、计算力输出（无状态纯函数） |
 | **limit** | 限位检测、弹簧力计算、振荡稳定检测 |
+| **app_mode** | 控制模式状态管理、按钮业务逻辑（回空闲/切下一状态） |
 | **app_usb** | USB 收包转发（传输层 → 协议层桥） |
 | **app_usb_protocol** | 帧解析状态机、CRC8 校验、命令分发、响应组帧 |
 
@@ -273,8 +305,11 @@ USB OUT 中断
        └→ app_usb.c: Usb_OnReceive(buf, len)
             └→ app_usb_protocol.c: UsbProto_HandleRx
                  └→ 解析状态机（跨 USB 包重组）→ CRC8 校验 → 命令分发
-                      ├→ SET_CONFIG → App_Knob_SetConfig()
-                      └→ GET_ANGLE  → BSP_KnobEncoder_GetAngle()
+                      ├→ SET_CONFIG    → App_Knob_SetConfig()
+                      ├→ GET_ANGLE     → BSP_KnobEncoder_GetAngle()
+                      ├→ SET_LIMIT_MODE→ KnobLimit_SetConfig()
+                      ├→ GET_STATE     → AppMode_GetMode() + BSP_KnobEncoder_GetAngle()
+                      └→ SET_MODE      → AppMode_SetMode()
                   响应帧 → UsbProto_SendFrame() → CDC_Transmit_FS()
 ```
 
@@ -490,6 +525,14 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 ---
 
 ## 更新日志
+
+### v3.4.0 (2026-08-05)
+- 新增控制模式指示与切换：
+  - 新增 BSP 模块 `Knob_Indicator`：LED（PA2 空闲/PA3 音量/PA4 亮度）+ 按键消抖扫描（PB12 回空闲/PB13 切下一状态）
+  - 新增 App 模块 `app_mode`：模式状态管理（空闲/音量/亮度）、按钮业务逻辑
+  - 按键扫描并入 1kHz 控制循环，模式变化点亮对应 LED
+- 协议新增 `GET_STATE`(0x07) 返回 [模式+角度] 合一、`SET_MODE`(0x08) 上位机同步模式
+- 上位机 50ms 轮询改为 `GET_STATE`，一次拿到模式和角度
 
 ### v3.3.0 (2026-08-05)
 - 新增 `SET_LIMIT_MODE` 命令（0x04）：运行中切换限位模式（关闭/单边/双边）

@@ -10,6 +10,7 @@
 #include "app_usb_protocol.h"
 #include "app_knob.h"
 #include "app_knob_limit.h"
+#include "app_mode.h"
 #include "bsp_knob_encoder.h"
 #include "usbd_cdc_if.h"
 #include <string.h>
@@ -63,6 +64,8 @@ static void UsbProto_Dispatch(void);
 static void UsbProto_HandleSetConfig(void);
 static void UsbProto_HandleGetAngle(void);
 static void UsbProto_HandleSetLimitMode(void);
+static void UsbProto_HandleGetState(void);
+static void UsbProto_HandleSetMode(void);
 static void UsbProto_SendResponse(uint8_t cmd, uint8_t status,
                                   const uint8_t *data, uint8_t data_len);
 
@@ -204,6 +207,14 @@ static void UsbProto_Dispatch(void)
             UsbProto_HandleSetLimitMode();
             break;
 
+        case USB_PROTO_CMD_GET_STATE:
+            UsbProto_HandleGetState();
+            break;
+
+        case USB_PROTO_CMD_SET_MODE:
+            UsbProto_HandleSetMode();
+            break;
+
         default:
             UsbProto_SendResponse(s_rx_type, USB_PROTO_STATUS_ERR_UNKNOWN, NULL, 0);
             break;
@@ -281,6 +292,56 @@ static void UsbProto_HandleSetLimitMode(void)
     }
 
     UsbProto_SendResponse(USB_PROTO_CMD_SET_LIMIT_MODE, status, NULL, 0);
+}
+
+/**
+ * @brief 查询状态：返回 [模式1B][角度4B float 小端]
+ * @details 上位机 50ms 轮询一次即可同时拿到控制模式和角度，
+ *          替代分别发 GET_ANGLE + GET_MODE 的两次往返。
+ */
+static void UsbProto_HandleGetState(void)
+{
+    uint8_t status = USB_PROTO_STATUS_OK;
+
+    if (s_rx_len != 0)
+    {
+        status = USB_PROTO_STATUS_ERR_LEN;
+        UsbProto_SendResponse(USB_PROTO_CMD_GET_STATE, status, NULL, 0);
+        return;
+    }
+
+    // 载荷 = [模式1B][角度4B float]
+    uint8_t payload[5];
+    payload[0] = (uint8_t)AppMode_GetMode();
+    float angle = BSP_KnobEncoder_GetAngle();
+    memcpy(&payload[1], &angle, sizeof(angle));
+
+    UsbProto_SendResponse(USB_PROTO_CMD_GET_STATE, status, payload, sizeof(payload));
+}
+
+/**
+ * @brief 设置控制模式：payload[0] = 0空闲/1音量/2亮度
+ * @details 上位机 UI 勾选音量/亮度时同步到下位机，
+ *          下位机切换模式并点亮对应 LED。
+ */
+static void UsbProto_HandleSetMode(void)
+{
+    uint8_t status = USB_PROTO_STATUS_OK;
+
+    if (s_rx_len != 1)
+    {
+        status = USB_PROTO_STATUS_ERR_LEN;
+    }
+    else if (s_rx_payload[0] > KNOB_STATE_MODE_BRIGHTNESS)
+    {
+        status = USB_PROTO_STATUS_ERR_PARAM;
+    }
+    else
+    {
+        AppMode_SetMode((KnobStateMode_t)s_rx_payload[0]);
+    }
+
+    UsbProto_SendResponse(USB_PROTO_CMD_SET_MODE, status, NULL, 0);
 }
 
 // =================================== 发送  ===================================

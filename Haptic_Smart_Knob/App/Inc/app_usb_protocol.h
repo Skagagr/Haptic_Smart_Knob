@@ -69,6 +69,8 @@ typedef enum
     USB_PROTO_CMD_SET_CONFIG     = 0x02,    ///< 设置预设：载荷 1B = preset (0~4)
     USB_PROTO_CMD_GET_ANGLE      = 0x03,    ///< 查询角度：载荷为空
     USB_PROTO_CMD_SET_LIMIT_MODE = 0x04,    ///< 设置限位模式：载荷 1B = 0关闭/1单边/2双边
+    USB_PROTO_CMD_GET_STATE      = 0x07,    ///< 查询状态：返回 [模式1B][角度4B float]
+    USB_PROTO_CMD_SET_MODE       = 0x08,    ///< 设置控制模式：载荷 1B = 0空闲/1音量/2亮度
 } UsbProtoCmd_t;
 
 // ========================= 状态码（响应载荷首字节）  =========================

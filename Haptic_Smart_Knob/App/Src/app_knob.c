@@ -16,6 +16,7 @@
 #include "app_knob.h"
 #include "app_knob_physics.h"
 #include "app_knob_limit.h"
+#include "app_mode.h"
 #include "bsp_knob_encoder.h"
 #include "bsp_knob_motor.h"
 #include "bsp_knob_buzzer.h"
@@ -78,6 +79,7 @@ void App_Knob_Init(void)
                      s_config.return_strength);
     KnobLimit_Init();
     BSP_KnobBuzzer_Init();
+    AppMode_Init();
 
     // 初始化状态机
     s_current_state = KNOB_STATE_FREE;
@@ -95,7 +97,7 @@ void App_Knob_Init(void)
 
 /**
  * @brief 1kHz 控制循环（由 TIM3 ISR 调用）
- * @details 7 步控制流程：
+ * @details 8 步控制流程：
  *          1. 读取传感器数据
  *          2. 更新限位（可能触发状态切换）
  *          3. 状态机计算力输出
@@ -103,6 +105,7 @@ void App_Knob_Init(void)
  *          5. 应用电机输出
  *          6. 蜂鸣器脉冲计时
  *          7. 卡位变化检测 + 蜂鸣器触发（限位激活时跳过）
+ *          8. 控制模式按键扫描（实时响应）
  */
 void App_Knob_Control(void)
 {
@@ -163,6 +166,9 @@ void App_Knob_Control(void)
             BSP_KnobBuzzer_Click();
         }
     }
+
+    // 8. 控制模式按键扫描（1kHz 实时响应，不受主循环延时阻塞）
+    AppMode_ScanButtons();
 }
 
 /**
