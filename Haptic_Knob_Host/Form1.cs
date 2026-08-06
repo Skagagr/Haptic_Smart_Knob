@@ -17,6 +17,7 @@ namespace Haptic_Knob_Host
         private float lastAngle;            // 上一次角度
         private float angleAccumulator;     // 角度差累加器
         private float detentAngle = 15f;    // 每个卡位对应的角度，随预设变化（默认 FINE_24）
+        private DateTime _lastRxTime;       // 最近一次收到有效响应的时间（失联看门狗）
 
         public Form1()
         {
@@ -34,19 +35,27 @@ namespace Haptic_Knob_Host
 
         #region 串口开关
 
-        /// <summary>刷新可用串口列表到下拉框</summary>
+        /// <summary>刷新可用串口列表到下拉框（去重）</summary>
         private void RefreshPorts()
         {
-            string previous = cmbPort.SelectedItem as string ?? "";
-            cmbPort.Items.Clear();
-            cmbPort.Items.AddRange(SerialPort.GetPortNames());
-            if (cmbPort.Items.Contains(previous))
+            try
             {
-                cmbPort.SelectedItem = previous;      // 保持之前选中的端口
+                string previous = cmbPort.SelectedItem as string ?? "";
+                cmbPort.Items.Clear();
+                string[] ports = SerialPort.GetPortNames().Distinct().ToArray();
+                cmbPort.Items.AddRange(ports);
+                if (cmbPort.Items.Contains(previous))
+                {
+                    cmbPort.SelectedItem = previous;      // 保持之前选中的端口
+                }
+                else if (cmbPort.Items.Count > 0)
+                {
+                    cmbPort.SelectedIndex = 0;
+                }
             }
-            else if (cmbPort.Items.Count > 0)
+            catch (Exception ex)
             {
-                cmbPort.SelectedIndex = 0;
+                Log($"枚举串口失败：{ex.Message}");
             }
         }
 
@@ -67,17 +76,51 @@ namespace Haptic_Knob_Host
                                     "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-                serialPort.PortName = port;
-                serialPort.BaudRate = 115200;
-                serialPort.Open();
+                try
+                {
+                    serialPort.PortName = port;
+                    serialPort.BaudRate = 115200;
+                    serialPort.Open();
+                }
+                catch (Exception ex) when (ex is OperationCanceledException or
+                                               IOException or
+                                               UnauthorizedAccessException or
+                                               InvalidOperationException)
+                {
+                    MessageBox.Show($"打开串口失败：{ex.Message}",
+                                    "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Log($"打开 {port} 失败：{ex.Message}");
+                    return;
+                }
+                serialPort.DataReceived += SerialPort_DataReceived;   // 断开后重新连接需重新注册
+                _lastRxTime = DateTime.Now;    // 初始化看门狗时间戳，避免连接后立即误判失联
+                pollTimer.Start();             // 失联断开时轮询被停止，重连需恢复
                 btnOpen.Text = "关闭串口";
                 ApplyDefaultPreset();       // 连接后切到默认预设 FINE_24
             }
             else
             {
-                serialPort.Close();
+                CloseSerial();                 // 手动关闭（设备可能已失效，需保护）
                 btnOpen.Text = "打开串口";
             }
+        }
+
+        /// <summary>安全关闭串口并重置运行状态（设备失效/复位时 Close 可能抛异常）</summary>
+        private void CloseSerial()
+        {
+            serialPort.DataReceived -= SerialPort_DataReceived;   // 先注销事件，防止后台回调
+            if (serialPort.IsOpen)
+            {
+                try { serialPort.Close(); }
+                catch { /* 设备已失效，忽略关闭异常 */ }
+            }
+
+            btnOpen.Text = "打开串口";            // 恢复按钮文字
+            pollTimer.Stop();                     // 停止轮询，避免继续 Write 抛异常
+
+            hasLastAngle = false;                 // 重置角度基准，避免重连后首帧误判转动
+            angleAccumulator = 0f;
+            _lastRxTime = DateTime.MinValue;      // 重置心跳，避免重连前误判
         }
 
         /// <summary>默认预设 FINE_24（2）：通知固件并同步卡位角度</summary>
@@ -94,8 +137,17 @@ namespace Haptic_Knob_Host
         /// <summary>周期查询状态（Timer 在主线程触发，可直接操作控件）；轮询不记日志避免刷屏</summary>
         private void pollTimer_Tick(object? sender, EventArgs e)
         {
+            // 失联检测：超过阈值没收到任何响应（如 STM32 复位、USB 重枚举），判定连接已失效
+            if (serialPort.IsOpen && (DateTime.Now - _lastRxTime).TotalMilliseconds > RxTimeoutMs)
+            {
+                HandleSerialDisconnect(new IOException("未收到固件响应，判定失联"));
+                return;
+            }
             SendSilent(KnobProtocol.BuildGetState());
         }
+
+        /// <summary>失联超时阈值 (ms)：轮询 50ms，连续 ~10 次无响应才判定</summary>
+        private const double RxTimeoutMs = 500;
 
         #endregion
 
@@ -105,7 +157,10 @@ namespace Haptic_Knob_Host
         private void Send(byte[] frame, string desc)
         {
             if (!serialPort.IsOpen) return;
-            serialPort.Write(frame, 0, frame.Length);
+            if (!TryWrite(frame))
+            {
+                return;   // 串口已断开，状态已由 TryWrite 清理
+            }
             Log($"--> {desc}: {BitConverter.ToString(frame)}");
         }
 
@@ -113,7 +168,32 @@ namespace Haptic_Knob_Host
         private void SendSilent(byte[] frame)
         {
             if (!serialPort.IsOpen) return;
-            serialPort.Write(frame, 0, frame.Length);
+            TryWrite(frame);   // 断开时忽略，不刷日志
+        }
+
+        /// <summary>安全写入串口；串口断开/异常时清理连接状态并返回 false</summary>
+        private bool TryWrite(byte[] frame)
+        {
+            try
+            {
+                serialPort.Write(frame, 0, frame.Length);
+                return true;
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or
+                                           IOException or
+                                           InvalidOperationException or
+                                           UnauthorizedAccessException)
+            {
+                HandleSerialDisconnect(ex);
+                return false;
+            }
+        }
+
+        /// <summary>串口异常断开/失联：统一清理连接状态</summary>
+        private void HandleSerialDisconnect(Exception ex)
+        {
+            CloseSerial();   // 注销事件 + 关串口 + 停轮询 + 重置角度基准
+            Log($"串口连接已断开：{ex.Message}");
         }
 
         #endregion
@@ -125,14 +205,24 @@ namespace Haptic_Knob_Host
         {
             BeginInvoke(new Action(() =>
             {
-                int count = serialPort.BytesToRead;
-                byte[] buffer = new byte[count];
-                serialPort.Read(buffer, 0, count);
-
-                foreach (byte b in buffer)
+                try
                 {
-                    byte[]? frame = parser.Feed(b);
-                    if (frame != null) HandleFrame(frame);
+                    int count = serialPort.BytesToRead;
+                    byte[] buffer = new byte[count];
+                    serialPort.Read(buffer, 0, count);
+
+                    foreach (byte b in buffer)
+                    {
+                        byte[]? frame = parser.Feed(b);
+                        if (frame != null) HandleFrame(frame);
+                    }
+                }
+                catch (Exception ex) when (ex is OperationCanceledException or
+                                               IOException or
+                                               InvalidOperationException or
+                                               UnauthorizedAccessException)
+                {
+                    HandleSerialDisconnect(ex);   // 串口断开：清理连接状态
                 }
             }));
         }
@@ -164,6 +254,7 @@ namespace Haptic_Knob_Host
         {
             // frame = [type][status][mode][角度4B float]
             if ((KnobStatus)frame[1] != KnobStatus.Ok || frame.Length < 7) return;
+            _lastRxTime = DateTime.Now;        // 只有收到有效状态响应才刷新心跳
             byte mode = frame[2];
             float angle = BitConverter.ToSingle(frame, 3);
 
@@ -383,9 +474,10 @@ namespace Haptic_Knob_Host
 
         #region 关闭清理
 
-        /// <summary>关闭窗口时释放音量/亮度控制器（COM 对象）</summary>
+        /// <summary>关闭窗口时：清理串口、释放控制器</summary>
         private void Form1_FormClosing(object? sender, FormClosingEventArgs e)
         {
+            CloseSerial();   // 注销事件 + 关串口 + 停轮询 + 重置角度基准
             volume.Dispose();
             brightness.Dispose();
         }
