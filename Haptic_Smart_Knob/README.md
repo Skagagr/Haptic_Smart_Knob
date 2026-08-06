@@ -102,6 +102,16 @@
 | PWMB | 空置不接 |
 | GND | 接系统共地 |
 
+### LED / 按键接线
+
+| 信号 | STM32 引脚 | 说明 |
+|------|-----------|------|
+| LED-空闲 | PA2 | GPIO Output, **低电平点亮**（需串限流电阻） |
+| LED-音量 | PA3 | GPIO Output, 低电平点亮 |
+| LED-亮度 | PA4 | GPIO Output, 低电平点亮 |
+| 按键-回空闲 | PB12 | GPIO Input + 上拉, 按下=低电平 |
+| 按键-切下一状态 | PB13 | GPIO Input + 上拉, 按下=低电平 |
+
 ### USB 通讯（micro-USB 口）接线与标准初始流程
 
 | micro-USB 信号 | 接到哪里 | 说明 |
@@ -239,33 +249,41 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 ### 分层设计
 
 ```
-┌──────────────────────────────────────────┐
-│  app_knob.c (应用层入口)                 │
-│  - 1kHz 控制循环 + 状态机 + ISR          │
-│  - 蜂鸣器事件 + 卡位检测                 │
-│  - 协调 physics / limit 子模块           │
-└────────────┬─────────────────────────────┘
-     ┌───────┼───────┐
-     │               │
-┌────▼─────┐   ┌─────▼────┐
-│ physics  │   │  limit   │
-│ 卡位物理 │   │  限位    │
-│ 纯计算   │   │  模块    │
-└──────────┘   └──────────┘
-     │               │
-     └───────┬───────┘
-             │
-┌────────────▼─────────────┐
-│  app_mode.c (控制模式)   │
-│  - 模式状态管理           │
-│  - 按钮业务逻辑           │
-└────────────┬─────────────┘
-             │
-     ┌───────▼────────┐
-     │  BSP 层        │
-     │  硬件抽象层    │
-     └────────────────┘
+┌──────────────────────────────────────────────┐
+│  App 层（应用层）                            │
+│                                              │
+│  app_knob.c   ← 编排层                       │
+│    1kHz 控制循环 + 状态机 + ISR              │
+│    蜂鸣器事件 + 卡位检测 + 按键扫描          │
+│         │                                    │
+│    ┌────┼──────┬───────────┐                 │
+│    ▼         ▼            ▼                 │
+│ physics    limit      app_mode             │
+│ 卡位物理    限位弹簧     控制模式             │
+│ 纯计算      弹跳检测     按钮业务             │
+│                                              │
+│  app_usb_protocol.c  ← 通信协议（中断上下文）│
+│   帧解析状态机 + CRC8 + 命令分发             │
+└──────────────┬───────────────────────────────┘
+               │
+┌──────────────▼───────────────────────────────┐
+│  BSP 层（硬件抽象层）                        │
+│  encoder / motor / buzzer / indicator        │
+│  （编码器 / 电机 / 蜂鸣器 / 指示灯+按键）     │
+└──────────────┬───────────────────────────────┘
+               │
+┌──────────────▼───────────────────────────────┐
+│  HAL 层（STM32 标准外设库）                  │
+│  TIM2/TIM3/TIM4, GPIO, USART, USB            │
+└──────────────────────────────────────────────┘
 ```
+
+**说明**：
+- App 层 4 个模块**平级**：`physics`/`limit`/`app_mode` 互不依赖，
+  均由 `app_knob`（编排层）调用
+- `app_usb_protocol` 是独立的**通信协议路径**，运行在 USB 中断上下文，
+  与力反馈控制循环解耦
+- 每个 App 模块按需调用 BSP 层，不跨层调用
 
 ### 文件结构
 
@@ -315,11 +333,12 @@ USB OUT 中断
        └→ app_usb.c: Usb_OnReceive(buf, len)
             └→ app_usb_protocol.c: UsbProto_HandleRx
                  └→ 解析状态机（跨 USB 包重组）→ CRC8 校验 → 命令分发
-                      ├→ SET_CONFIG    → App_Knob_SetConfig()
-                      ├→ GET_ANGLE     → BSP_KnobEncoder_GetAngle()
-                      ├→ SET_LIMIT_MODE→ KnobLimit_SetConfig()
-                      ├→ GET_STATE     → AppMode_GetMode() + BSP_KnobEncoder_GetAngle()
-                      └→ SET_MODE      → AppMode_SetMode()
+                      ├→ SET_CONFIG     → App_Knob_SetConfig()
+                      ├→ GET_ANGLE      → BSP_KnobEncoder_GetAngle()
+                      ├→ SET_LIMIT_MODE → KnobLimit_SetConfig()
+                      ├→ GET_STATE      → AppMode_GetMode() + BSP_KnobEncoder_GetAngle()
+                      ├→ SET_MODE       → AppMode_SetMode()
+                      └→ SET_BUZZER     → App_Knob_SetBuzzerEnabled()
                   响应帧 → UsbProto_SendFrame() → CDC_Transmit_FS()
 ```
 
@@ -505,6 +524,7 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 | **N20 力矩上限** | N20 电机力矩有限，无法实现"硬墙"限位手感 | 升级到 BLDC 无刷电机 + FOC 控制 |
 | **归中力振荡** | 归中力太高会冲过死区来回摆 | 当前 14% 地板 + 渐变是折中方案，可微调 `return_strength` |
 | **无绝对零点** | 增量式编码器上电从 0 开始计数 | 添加霍尔传感器或磁编码器实现绝对位置 |
+| **USB 复位需重插** | STM32 快速复位时 USB 重枚举时序太短，Windows 不刷新 COM 口 | 断电重插，或固件加 USB 软件重连（拉低 D+ 10ms） |
 
 ---
 
