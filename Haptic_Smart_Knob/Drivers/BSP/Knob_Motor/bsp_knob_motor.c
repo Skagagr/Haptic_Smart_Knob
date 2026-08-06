@@ -1,6 +1,6 @@
 /**
  * @file    bsp_knob_motor.c
- * @brief   旋钮编码器驱动模块实现
+ * @brief   旋钮电机驱动模块实现
  *
  * @version 1.0.0
  * @date    2026/7/31

@@ -4,8 +4,8 @@
  *
  * @details 通过TIM4 PWM占空比控制力矩/转速大小，AIN1/AIN2（PB7/PB8）
  *          控制转向，STBY（PB9）使能TB6612驱动板输出。TIM4配置为
- *          Prescaler=0 ARR=999，占空比=CCR/1000。当前为第3步开环
- *          测试阶段，尚未接入编码器反馈闭环
+ *          Prescaler=0 ARR=999，占空比=CCR/1000。占空比 0~100 映射到
+ *          CCR 0~999，由 App 层控制循环（卡位/限位/归中）计算输出。
  *
  * @version 1.0.0
  * @date    2026/7/31

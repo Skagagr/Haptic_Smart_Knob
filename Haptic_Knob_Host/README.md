@@ -105,6 +105,7 @@ Haptic_Knob_Host/
 | `SET_LIMIT_MODE` | 0x04 | 1B = mode (0关闭/1单边/2双边) | 0x84 | 设置限位模式 |
 | `GET_STATE` | 0x07 | 空 | 0x87 | 查询状态，回 [模式1B][角度4B] |
 | `SET_MODE` | 0x08 | 1B = mode (0空闲/1音量/2亮度) | 0x88 | 设置控制模式（同步下位机） |
+| `SET_BUZZER` | 0x09 | 1B = 0关/1开 | 0x89 | 设置蜂鸣器开关 |
 
 - 同步头：`0xAA 0x55` 双字节
 - CRC8：多项式 0x07，覆盖 Type+Len+Payload

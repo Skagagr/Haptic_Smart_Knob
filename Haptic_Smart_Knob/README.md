@@ -221,7 +221,7 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 
 | 外设 | 功能 | 关键配置 |
 |------|------|----------|
-| TIM2 | 编码器接口 (A/B 相 PA0/PA1) | Encoder Mode TI1+TI2, PSC=0, ARR=65535 |
+| TIM2 | 编码器接口 (A/B 相 PA0/PA1) | Encoder Mode TI1+TI2（四倍频），ARR=65535 |
 | TIM3 | 1kHz 控制循环中断 | PSC=71, ARR=999 → 72MHz/72/1000=1kHz |
 | TIM4 CH1 | 电机 PWM (PB6) | PWM Mode 1, PSC=0, ARR=999, 占空比=CCR/1000 |
 | PB7/PB8 | TB6612 AIN1/AIN2 方向控制 | GPIO Output |
@@ -234,7 +234,7 @@ void Usb_OnReceive(uint8_t *buf, uint32_t len)
 
 ---
 
-## 软件架构 v3.2
+## 软件架构 v3.4
 
 ### 分层设计
 
@@ -329,16 +329,19 @@ USB OUT 中断
 
 ### 1. 修改配置
 
-打开 `App/Src/app_knob.c`，找到第 71-73 行：
+打开 `App/Src/app_knob.c` 的 `App_Knob_Init()`：
 
 ```c
 void App_Knob_Init(void)
 {
-    // 默认配置：24 卡位，中等力度
-    s_config.preset = KNOB_PRESET_FINE_24;   // ← 改这里
+    // 默认配置：12 卡位，中等力度
+    s_config.preset = KNOB_PRESET_NORMAL_12;   // ← 改这里
     s_config.detent_strength = 7;             // ← 改这里 (1-10)
     s_config.return_strength = 8;             // ← 改这里 (1-10)
 ```
+
+> 上位机连接串口时会自动下发 `SET_CONFIG(FINE_24)`，把旋钮切到 24 卡位。
+> 若要改固件上电默认手感，改这里；上位机行为在 `Haptic_Knob_Host/Form1.cs` 的 `ApplyDefaultPreset()`。
 
 **可选预设：**
 ```c
@@ -355,7 +358,7 @@ KNOB_PRESET_SMOOTH      // 完全平滑，无卡位
 
 ### 2. 修改限位配置
 
-打开 `App/Inc/app_knob_limit.h`，修改第 15-20 行：
+打开 `App/Inc/app_knob_limit.h` 的"限位默认值"分节：
 
 ```c
 #define KNOB_LIMIT_DEFAULT_MODE    KNOB_LIMIT_MODE_DUAL  // OFF/SINGLE/DUAL
@@ -507,7 +510,7 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 
 ## 与 SmartKnob 原版对比
 
-| 功能 | SmartKnob 原版 |   本项目 (v3.2)   |
+| 功能 | SmartKnob 原版 |   本项目 (v3.4)   |
 |------|:---:|:--------------:|
 | 虚拟卡位 | ✓ PID 弹簧 | ✓ EC11 棘轮 bump |
 | 角度限位 | ✓ |  ✓ 双向弹簧 + 阻尼   |
@@ -516,7 +519,7 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 | 限位范围可调 | ✓ |   ✓ 运行时 API    |
 | 蜂鸣反馈 | ✗ | ✓ 卡位切换 + 限位撞击  |
 | 240×240 LCD | ✓ |     ✗ (暂无)     |
-| 按压检测 | ✓ |    ✗ (无传感器)    |
+| 按压检测 | ✓ |    ✓ (2 个模式切换按键)   |
 | RGB LED 灯环 | ✓ |    ✗ (无灯珠)     |
 | WiFi / BLE | ✓ |   ✗ (无无线模块)    |
 | BLDC FOC 控制 | ✓ |  ✗ (N20 直流有刷)  |
@@ -529,8 +532,8 @@ Angle:   47.25  Target:   45.00  Err:  -2.25  Out:  15.00  Det#:  6  State: 0
 |------|------|------|
 | 初始工程 | USB-CDC 通讯（CubeMX 配置 + 电脑识别 COM 口） | 已完成 |
 | 基础通信 | 双向通信协议（帧头 + 长度 + 校验 + 查询/设置命令） | 已完成 |
-| 旋钮控制 | 旋钮伺服跟随（闭环位置环 + 人手接管检测） | 待做 |
-| 最终交互 | C# 上位机（CoreAudio 音量 / WMI 亮度 / 媒体键 + 状态回读） | 待做 |
+| 系统控制 | 上位机控制音量/亮度（含控制模式 + 双向同步） | 已完成 |
+| 媒体键 | 上位机媒体键控制（播放/暂停/上一首/下一首） | 待做 |
 
 ---
 
